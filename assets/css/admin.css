@@ -1,0 +1,236 @@
+/* Admin CSS (assets/css/admin.css) */
+.csd-dashboard-wrapper {
+	display: flex;
+	flex-wrap: wrap;
+	margin: 0 -10px;
+}
+.csd-dashboard-column {
+	flex: 1 1 calc(50% - 20px);
+	min-width: 300px;
+	margin: 0 10px 20px;
+}
+.csd-dashboard-box {
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	box-shadow: 0 1px 1px rgba(0,0,0,.04);
+	margin-bottom: 20px;
+	padding: 10px 20px 20px;
+}
+.csd-stats {
+	display: flex;
+	justify-content: space-between;
+	margin-bottom: 20px;
+}
+.csd-stat-item {
+	text-align: center;
+	padding: 10px;
+	flex: 1;
+	border: 1px solid #eee;
+	border-radius: 4px;
+	margin: 0 5px;
+}
+.csd-stat-number {
+	display: block;
+	font-size: 24px;
+	font-weight: 700;
+	margin-bottom: 5px;
+	color: #1e88e5;
+}
+.csd-stat-label {
+	font-size: 13px;
+	color: #555;
+}
+.csd-quick-links {
+	display: flex;
+	flex-wrap: wrap;
+	margin: 0 -5px;
+}
+.csd-quick-links li {
+	margin: 0 5px 10px;
+}
+.csd-view-all {
+	text-align: right;
+	margin-top: 10px;
+}
+.csd-filters {
+	margin-bottom: 20px;
+	padding: 15px;
+	background: #f8f8f8;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+.csd-search-box {
+	margin-bottom: 10px;
+}
+.csd-search-box input[type="text"] {
+	width: 300px;
+	max-width: 100%;
+}
+.csd-filter-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+}
+.csd-filter-controls select {
+	margin-right: 10px;
+	margin-bottom: 10px;
+}
+.csd-filter-controls button {
+	margin-right: 5px;
+	margin-bottom: 10px;
+}
+.csd-table-container {
+	overflow-x: auto;
+}
+.csd-pagination {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 15px;
+}
+.csd-pagination-links {
+	display: flex;
+	align-items: center;
+}
+.csd-pagination-links a, .csd-pagination-links span {
+	margin: 0 2px;
+}
+.csd-pagination-dots {
+	padding: 0 5px;
+}
+.csd-form-section {
+	margin-bottom: 30px;
+}
+.csd-form-submit {
+	padding: 15px 0;
+	margin-top: 20px;
+	border-top: 1px solid #ddd;
+}
+.csd-last-updated {
+	float: right;
+	color: #666;
+	font-style: italic;
+	line-height: 28px;
+}
+.csd-school-details, .csd-staff-details {
+	background: #fff;
+	border: 1px solid #ddd;
+	padding: 20px;
+	margin-bottom: 20px;
+}
+.csd-detail-section {
+	margin-bottom: 30px;
+}
+.csd-staff-actions {
+	margin-bottom: 15px;
+}
+.sorted-asc:after {
+	content: "▲";
+	margin-left: 5px;
+	font-size: 10px;
+}
+.sorted-desc:after {
+	content: "▼";
+	margin-left: 5px;
+	font-size: 10px;
+}
+.csd-tabs-wrapper {
+	background: #fff;
+	border: 1px solid #ccd0d4;
+	box-shadow: 0 1px 1px rgba(0,0,0,.04);
+	margin-top: 20px;
+}
+.csd-tabs {
+	display: flex;
+	border-bottom: 1px solid #ccd0d4;
+}
+.csd-tab {
+	padding: 10px 15px;
+	text-decoration: none;
+	border-right: 1px solid #ccd0d4;
+	background: #f5f5f5;
+	color: #555;
+	font-weight: 600;
+}
+.csd-tab.active {
+	background: #fff;
+	color: #23282d;
+	border-bottom: 1px solid #fff;
+	margin-bottom: -1px;
+}
+.csd-tab-content {
+	display: none;
+	padding: 20px;
+}
+.csd-tab-content.active {
+	display: block;
+}
+.csd-import-section, .csd-export-section {
+	max-width: 800px;
+}
+.csd-import-options, .csd-export-options {
+	margin: 15px 0;
+	padding: 15px;
+	background: #f8f8f8;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+.csd-import-option, .csd-export-option {
+	margin-bottom: 10px;
+}
+.csd-file-upload {
+	margin: 15px 0;
+}
+.csd-submit-button {
+	margin: 15px 0;
+}
+.csd-column-mapping {
+	margin-top: 20px;
+	padding: 15px;
+	background: #f8f8f8;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+.csd-mapping-field {
+	margin-bottom: 10px;
+	display: flex;
+	align-items: center;
+}
+.csd-mapping-field label {
+	width: 150px;
+	font-weight: 600;
+	margin-right: 10px;
+}
+.csd-mapping-field select {
+	flex: 1;
+}
+.csd-import-templates {
+	margin-top: 30px;
+	padding-top: 20px;
+	border-top: 1px solid #ddd;
+}
+.csd-import-templates .button {
+	margin-right: 10px;
+}
+.csd-shortcode-preview-wrapper {
+	margin-top: 20px;
+	padding: 15px;
+	background: #f8f8f8;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+.csd-shortcode-preview {
+	display: flex;
+	align-items: center;
+	background: #fff;
+	padding: 10px;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+.csd-shortcode-preview code {
+	flex: 1;
+	padding: 5px;
+	font-family: monospace;
+	background: #f9f9f9;
+	color: #444;
+}
