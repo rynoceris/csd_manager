@@ -1,0 +1,99 @@
+/* Frontend CSS (assets/css/frontend.css) */
+.csd-schools-container, .csd-staff-container, .csd-single-school {
+	margin-bottom: 30px;
+}
+.csd-schools-table, .csd-staff-table, .csd-info-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 15px 0;
+	border: 1px solid #ddd;
+}
+.csd-schools-table th, .csd-staff-table th, .csd-info-table th {
+	background: #f5f5f5;
+	padding: 10px;
+	text-align: left;
+	border-bottom: 1px solid #ddd;
+}
+.csd-schools-table td, .csd-staff-table td, .csd-info-table td {
+	padding: 10px;
+	border-bottom: 1px solid #ddd;
+}
+.csd-schools-table tr:nth-child(even), .csd-staff-table tr:nth-child(even) {
+	background-color: #f9f9f9;
+}
+.csd-schools-table .csd-sortable, .csd-staff-table .csd-sortable {
+	cursor: pointer;
+}
+.csd-schools-table .sorted-asc:after, .csd-staff-table .sorted-asc:after {
+	content: "▲";
+	margin-left: 5px;
+	font-size: 10px;
+}
+.csd-schools-table .sorted-desc:after, .csd-staff-table .sorted-desc:after {
+	content: "▼";
+	margin-left: 5px;
+	font-size: 10px;
+}
+.csd-info-table th {
+	width: 150px;
+}
+.csd-school-header {
+	margin-bottom: 20px;
+}
+.csd-school-name {
+	margin-bottom: 5px;
+}
+.csd-school-mascot {
+	color: #666;
+	font-style: italic;
+}
+.csd-school-section {
+	margin-bottom: 30px;
+}
+.csd-pagination {
+	margin-top: 15px;
+}
+.csd-pagination-counts {
+	color: #666;
+}
+.csd-page-number {
+	display: inline-block;
+	padding: 5px 10px;
+	margin: 0 2px;
+	border: 1px solid #ddd;
+	text-decoration: none;
+	color: #333;
+}
+.csd-page-number.current {
+	background: #f5f5f5;
+	font-weight: bold;
+}
+.csd-filters {
+	margin-bottom: 20px;
+	padding: 15px;
+	background: #f8f8f8;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+.csd-search-box {
+	margin-bottom: 10px;
+}
+.csd-filter-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+}
+.csd-filter-field {
+	margin-right: 15px;
+	margin-bottom: 10px;
+}
+.csd-filter-field label {
+	margin-right: 5px;
+	font-weight: bold;
+}
+.csd-filter-buttons {
+	margin-bottom: 10px;
+}
+.csd-filter-buttons button {
+	margin-right: 5px;
+}
