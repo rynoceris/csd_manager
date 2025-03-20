@@ -18,14 +18,22 @@ class CSD_Import_Export {
 	 * Constructor
 	 */
 	public function __construct() {
-		add_action('wp_ajax_csd_process_import', array($this, 'ajax_process_import'));
-		add_action('wp_ajax_csd_export_data', array($this, 'ajax_export_data'));
+		// Note: AJAX handlers are registered in the main plugin file using wrapper functions
+		// Class methods are called from those wrappers
 	}
 	
 	/**
 	 * Render import/export page
 	 */
 	public function render_page() {
+		// Ensure scripts and nonce are properly loaded
+		wp_enqueue_script('jquery');
+		
+		// Manually localize the admin script
+		wp_localize_script('jquery', 'csd_ajax', array(
+			'ajax_url' => admin_url('admin-ajax.php'),
+			'nonce' => wp_create_nonce('csd-ajax-nonce')
+		));
 		?>
 		<div class="wrap">
 			<h1><?php _e('Import/Export', 'csd-manager'); ?></h1>
@@ -41,13 +49,24 @@ class CSD_Import_Export {
 						<h2><?php _e('Import Schools and Staff', 'csd-manager'); ?></h2>
 						<p><?php _e('Import schools and staff members from a CSV file. The first row should contain column headers.', 'csd-manager'); ?></p>
 						
+						<!-- Status messages will be displayed here -->
+						<div id="import-status" style="margin-bottom: 20px; padding: 10px; border-radius: 4px; display: none;"></div>
+						
 						<div class="csd-import-form-wrapper">
 							<form id="csd-import-form" enctype="multipart/form-data">
 								<div class="csd-import-options">
 									<div class="csd-import-option">
 										<label>
-											<input type="radio" name="import_type" value="schools" checked>
-											<?php _e('Import Schools', 'csd-manager'); ?>
+											<input type="radio" name="import_type" value="combined" checked>
+											<?php _e('Import Combined Format', 'csd-manager'); ?>
+										</label>
+										<p class="description"><?php _e('CSV contains staff member in each row with associated school. Creates schools as needed.', 'csd-manager'); ?></p>
+									</div>
+									
+									<div class="csd-import-option">
+										<label>
+											<input type="radio" name="import_type" value="schools">
+											<?php _e('Import Schools Only', 'csd-manager'); ?>
 										</label>
 										<p class="description"><?php _e('CSV should contain school data.', 'csd-manager'); ?></p>
 									</div>
@@ -55,17 +74,9 @@ class CSD_Import_Export {
 									<div class="csd-import-option">
 										<label>
 											<input type="radio" name="import_type" value="staff">
-											<?php _e('Import Staff', 'csd-manager'); ?>
+											<?php _e('Import Staff Only', 'csd-manager'); ?>
 										</label>
 										<p class="description"><?php _e('CSV should contain staff data with optional school association.', 'csd-manager'); ?></p>
-									</div>
-									
-									<div class="csd-import-option">
-										<label>
-											<input type="radio" name="import_type" value="both">
-											<?php _e('Import Both (School with Staff)', 'csd-manager'); ?>
-										</label>
-										<p class="description"><?php _e('CSV should contain both school and staff data.', 'csd-manager'); ?></p>
 									</div>
 								</div>
 								
@@ -94,7 +105,7 @@ class CSD_Import_Export {
 								</div>
 								
 								<div class="csd-submit-button">
-									<button type="submit" class="button button-primary"><?php _e('Upload and Import', 'csd-manager'); ?></button>
+									<button type="submit" class="button button-primary"><?php _e('Upload and Preview', 'csd-manager'); ?></button>
 								</div>
 							</form>
 						</div>
@@ -125,15 +136,6 @@ class CSD_Import_Export {
 							</div>
 						</div>
 					</div>
-					
-					<div class="csd-import-templates">
-						<h3><?php _e('CSV Templates', 'csd-manager'); ?></h3>
-						<p><?php _e('Download CSV templates to get started:', 'csd-manager'); ?></p>
-						
-						<a href="<?php echo esc_url(plugin_dir_url(__FILE__) . '../templates/schools-template.csv'); ?>" class="button"><?php _e('Schools Template', 'csd-manager'); ?></a>
-						<a href="<?php echo esc_url(plugin_dir_url(__FILE__) . '../templates/staff-template.csv'); ?>" class="button"><?php _e('Staff Template', 'csd-manager'); ?></a>
-						<a href="<?php echo esc_url(plugin_dir_url(__FILE__) . '../templates/school-with-staff-template.csv'); ?>" class="button"><?php _e('School with Staff Template', 'csd-manager'); ?></a>
-					</div>
 				</div>
 				
 				<div class="csd-tab-content" id="export-tab">
@@ -145,7 +147,14 @@ class CSD_Import_Export {
 							<div class="csd-export-options">
 								<div class="csd-export-option">
 									<label>
-										<input type="radio" name="export_type" value="schools" checked>
+										<input type="radio" name="export_type" value="combined" checked>
+										<?php _e('Export Combined Format', 'csd-manager'); ?>
+									</label>
+								</div>
+								
+								<div class="csd-export-option">
+									<label>
+										<input type="radio" name="export_type" value="schools">
 										<?php _e('Export All Schools', 'csd-manager'); ?>
 									</label>
 								</div>
@@ -157,14 +166,7 @@ class CSD_Import_Export {
 									</label>
 								</div>
 								
-								<div class="csd-export-option">
-									<label>
-										<input type="radio" name="export_type" value="both">
-										<?php _e('Export Schools with Staff', 'csd-manager'); ?>
-									</label>
-								</div>
-								
-								<div class="csd-export-option school-specific-export" style="display: none;">
+								<div class="csd-export-option school-specific-export">
 									<label for="export_school"><?php _e('Select a specific school:', 'csd-manager'); ?></label>
 									<select name="export_school" id="export_school">
 										<option value=""><?php _e('All Schools', 'csd-manager'); ?></option>
@@ -198,6 +200,15 @@ class CSD_Import_Export {
 		
 		<script type="text/javascript">
 			jQuery(document).ready(function($) {
+				// Check if csd_ajax is defined and create a fallback if not
+				if (typeof csd_ajax === 'undefined') {
+					window.csd_ajax = {
+						ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
+						nonce: '<?php echo wp_create_nonce('csd-ajax-nonce'); ?>'
+					};
+					console.log('Created fallback csd_ajax object');
+				}
+				
 				// Tab switching
 				$('.csd-tab').on('click', function(e) {
 					e.preventDefault();
@@ -213,9 +224,9 @@ class CSD_Import_Export {
 					$('#' + tab + '-tab').addClass('active');
 				});
 				
-				// Show/hide school-specific export option
+				// Show/hide school-specific export option based on export type
 				$('input[name="export_type"]').on('change', function() {
-					if ($(this).val() === 'both') {
+					if ($(this).val() === 'combined') {
 						$('.school-specific-export').show();
 					} else {
 						$('.school-specific-export').hide();
@@ -223,28 +234,58 @@ class CSD_Import_Export {
 					}
 				});
 				
+				// Helper to show status messages
+				function showStatus(message, isError) {
+					var statusDiv = $('#import-status');
+					statusDiv.html(message);
+					
+					if (isError) {
+						statusDiv.css('background-color', '#f8d7da').css('border', '1px solid #f5c6cb').css('color', '#721c24');
+					} else {
+						statusDiv.css('background-color', '#d4edda').css('border', '1px solid #c3e6cb').css('color', '#155724');
+					}
+					
+					statusDiv.show();
+				}
+				
 				// Import form submission
 				$('#csd-import-form').on('submit', function(e) {
 					e.preventDefault();
 					
+					// Validate file input
+					var fileInput = $('#csd_import_file')[0];
+					if (fileInput.files.length === 0) {
+						showStatus('Please select a CSV file to import.', true);
+						return;
+					}
+					
+					// Create FormData object for file upload
 					var formData = new FormData(this);
 					formData.append('action', 'csd_preview_import');
 					formData.append('nonce', csd_ajax.nonce);
 					
+					// Show loading status
+					showStatus('Uploading and processing file...', false);
+					$('.csd-submit-button button').prop('disabled', true);
+					
+					// Log what we're sending
+					console.log('Sending AJAX request to:', csd_ajax.ajax_url);
+					
+					// Send AJAX request
 					$.ajax({
 						url: csd_ajax.ajax_url,
 						type: 'POST',
 						data: formData,
 						processData: false,
 						contentType: false,
-						beforeSend: function() {
-							// Show loading indicator
-							$('.csd-submit-button button').prop('disabled', true).text('<?php _e('Processing...', 'csd-manager'); ?>');
-						},
 						success: function(response) {
-							$('.csd-submit-button button').prop('disabled', false).text('<?php _e('Upload and Import', 'csd-manager'); ?>');
+							console.log('Response:', response);
+							$('.csd-submit-button button').prop('disabled', false);
 							
 							if (response.success) {
+								// Hide status message
+								$('#import-status').hide();
+								
 								// Hide import form and show preview
 								$('.csd-import-form-wrapper').hide();
 								$('#csd-import-preview').show();
@@ -260,12 +301,16 @@ class CSD_Import_Export {
 								$('#csd-process-import').data('import_type', response.data.import_type);
 								$('#csd-process-import').data('update_existing', response.data.update_existing);
 							} else {
-								alert(response.data.message);
+								// Show error message
+								showStatus('Error: ' + (response.data ? response.data.message : 'Unknown error'), true);
 							}
 						},
-						error: function() {
-							$('.csd-submit-button button').prop('disabled', false).text('<?php _e('Upload and Import', 'csd-manager'); ?>');
-							alert('<?php _e('An error occurred. Please try again.', 'csd-manager'); ?>');
+						error: function(xhr, status, error) {
+							console.error('AJAX Error:', status, error);
+							console.error('Response:', xhr.responseText);
+							
+							$('.csd-submit-button button').prop('disabled', false);
+							showStatus('Error: ' + status + ' - ' + error, true);
 						}
 					});
 				});
@@ -282,6 +327,11 @@ class CSD_Import_Export {
 						}
 					});
 					
+					// Show loading status
+					showStatus('Processing import...', false);
+					$('#csd-process-import').prop('disabled', true);
+					$('#csd-cancel-import').prop('disabled', true);
+					
 					$.ajax({
 						url: csd_ajax.ajax_url,
 						type: 'POST',
@@ -293,15 +343,16 @@ class CSD_Import_Export {
 							mapping: mappingData,
 							nonce: csd_ajax.nonce
 						},
-						beforeSend: function() {
-							$('#csd-process-import').prop('disabled', true).text('<?php _e('Processing...', 'csd-manager'); ?>');
-							$('#csd-cancel-import').prop('disabled', true);
-						},
 						success: function(response) {
-							$('#csd-process-import').prop('disabled', false).text('<?php _e('Process Import', 'csd-manager'); ?>');
+							console.log('Process Import Response:', response);
+							
+							$('#csd-process-import').prop('disabled', false);
 							$('#csd-cancel-import').prop('disabled', false);
 							
 							if (response.success) {
+								// Hide status message
+								$('#import-status').hide();
+								
 								// Hide preview and show results
 								$('#csd-import-preview').hide();
 								$('#csd-import-results').show();
@@ -309,13 +360,17 @@ class CSD_Import_Export {
 								// Display results
 								$('#csd-results-content').html(response.data.results_html);
 							} else {
-								alert(response.data.message);
+								// Show error message
+								showStatus('Error: ' + (response.data ? response.data.message : 'Unknown error'), true);
 							}
 						},
-						error: function() {
-							$('#csd-process-import').prop('disabled', false).text('<?php _e('Process Import', 'csd-manager'); ?>');
+						error: function(xhr, status, error) {
+							console.error('Process Import Error:', status, error);
+							console.error('Response:', xhr.responseText);
+							
+							$('#csd-process-import').prop('disabled', false);
 							$('#csd-cancel-import').prop('disabled', false);
-							alert('<?php _e('An error occurred. Please try again.', 'csd-manager'); ?>');
+							showStatus('Error processing import: ' + status + ' - ' + error, true);
 						}
 					});
 				});
@@ -325,6 +380,7 @@ class CSD_Import_Export {
 					$('#csd-import-preview').hide();
 					$('.csd-import-form-wrapper').show();
 					$('#csd-import-form')[0].reset();
+					$('#import-status').hide();
 				});
 				
 				// New import button
@@ -332,6 +388,7 @@ class CSD_Import_Export {
 					$('#csd-import-results').hide();
 					$('.csd-import-form-wrapper').show();
 					$('#csd-import-form')[0].reset();
+					$('#import-status').hide();
 				});
 				
 				// Export form submission
@@ -426,16 +483,13 @@ class CSD_Import_Export {
 					
 					var availableFields = {};
 					
-					if (importType === 'schools' || importType === 'both') {
+					if (importType === 'schools') {
 						$.extend(availableFields, schoolFields);
-					}
-					
-					if (importType === 'staff' || importType === 'both') {
-						$.extend(availableFields, staffFields);
-						
-						if (importType === 'staff') {
-							$.extend(availableFields, relationFields);
-						}
+					} else if (importType === 'staff') {
+						$.extend(availableFields, staffFields, relationFields);
+					} else {
+						// For combined or both type, all fields are available
+						$.extend(availableFields, schoolFields, staffFields);
 					}
 					
 					// Create mapping UI for each CSV column
@@ -447,6 +501,12 @@ class CSD_Import_Export {
 						var matchedField = '';
 						
 						$.each(availableFields, function(dbField, label) {
+							// Special case for sport___department (3 underscores)
+							if (column === 'sport___department' && dbField === 'sport_department') {
+								matchedField = dbField;
+								return false; // Break the loop
+							}
+							
 							// Check for exact match
 							if (fieldName === dbField) {
 								matchedField = dbField;
@@ -479,13 +539,138 @@ class CSD_Import_Export {
 	}
 	
 	/**
+	 * AJAX handler for previewing import
+	 */
+	public function ajax_preview_import() {
+		// Explicitly state content type for response
+		header('Content-Type: application/json');
+		
+		// Check nonce
+		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'csd-ajax-nonce')) {
+			wp_send_json_error(array('message' => 'Security check failed.'));
+			exit;
+		}
+		
+		if (!current_user_can('manage_options')) {
+			wp_send_json_error(array('message' => 'You do not have permission to perform this action.'));
+			exit;
+		}
+		
+		// Check if file was uploaded
+		if (!isset($_FILES['import_file']) || $_FILES['import_file']['error'] !== UPLOAD_ERR_OK) {
+			$error = isset($_FILES['import_file']) ? $_FILES['import_file']['error'] : 'No file uploaded';
+			wp_send_json_error(array('message' => 'File upload error: ' . $error));
+			exit;
+		}
+		
+		// Get form data
+		$import_type = isset($_POST['import_type']) ? sanitize_text_field($_POST['import_type']) : 'combined';
+		$update_existing = isset($_POST['update_existing']) && $_POST['update_existing'] === '1';
+		$skip_first_row = isset($_POST['skip_first_row']) && $_POST['skip_first_row'] === '1';
+		
+		// Create temp directory if it doesn't exist
+		$upload_dir = wp_upload_dir();
+		$temp_dir = $upload_dir['basedir'] . '/csd-temp/';
+		
+		if (!file_exists($temp_dir)) {
+			wp_mkdir_p($temp_dir);
+		}
+		
+		// Generate a unique file ID
+		$file_id = uniqid();
+		$temp_file = $temp_dir . $file_id . '.csv';
+		
+		// Move uploaded file to temp directory
+		if (!move_uploaded_file($_FILES['import_file']['tmp_name'], $temp_file)) {
+			wp_send_json_error(array('message' => 'Failed to move uploaded file.'));
+			exit;
+		}
+		
+		// Read CSV file for preview
+		$file = fopen($temp_file, 'r');
+		if (!$file) {
+			wp_send_json_error(array('message' => 'Could not open CSV file for reading.'));
+			exit;
+		}
+		
+		// Get headers
+		$headers = fgetcsv($file);
+		if (!$headers) {
+			fclose($file);
+			@unlink($temp_file);
+			wp_send_json_error(array('message' => 'Could not read CSV headers.'));
+			exit;
+		}
+		
+		// Get first few rows for preview
+		$preview_rows = array();
+		$max_preview_rows = 5;
+		$row_count = 0;
+		
+		while (($row = fgetcsv($file)) !== false && $row_count < $max_preview_rows) {
+			if (count($row) === count($headers)) {
+				$preview_rows[] = $row;
+			}
+			$row_count++;
+		}
+		
+		// Close file
+		fclose($file);
+		
+		// Generate preview HTML
+		$preview_html = '<div class="csd-preview-table-wrapper">';
+		$preview_html .= '<table class="wp-list-table widefat fixed striped">';
+		$preview_html .= '<thead><tr>';
+		
+		foreach ($headers as $header) {
+			$preview_html .= '<th>' . esc_html($header) . '</th>';
+		}
+		
+		$preview_html .= '</tr></thead><tbody>';
+		
+		if (empty($preview_rows)) {
+			$preview_html .= '<tr><td colspan="' . count($headers) . '">No valid data rows found in CSV.</td></tr>';
+		} else {
+			foreach ($preview_rows as $row) {
+				$preview_html .= '<tr>';
+				
+				foreach ($row as $cell) {
+					$preview_html .= '<td>' . esc_html($cell) . '</td>';
+				}
+				
+				$preview_html .= '</tr>';
+			}
+		}
+		
+		$preview_html .= '</tbody></table></div>';
+		
+		// Send success response
+		wp_send_json_success(array(
+			'preview_html' => $preview_html,
+			'columns' => $headers,
+			'import_type' => $import_type,
+			'update_existing' => $update_existing,
+			'file_id' => $file_id
+		));
+		exit;
+	}
+	
+	/**
 	 * AJAX handler for processing import
 	 */
 	public function ajax_process_import() {
-		check_admin_referer('csd-ajax-nonce', 'nonce');
+		// Explicitly state content type for response
+		header('Content-Type: application/json');
 		
-		if (!current_user_can('manage_csd')) {
-			wp_send_json_error(array('message' => __('You do not have permission to perform this action.', 'csd-manager')));
+		// Check nonce
+		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'csd-ajax-nonce')) {
+			wp_send_json_error(array('message' => 'Security check failed.'));
+			exit;
+		}
+		
+		if (!current_user_can('manage_options')) {
+			wp_send_json_error(array('message' => 'You do not have permission to perform this action.'));
+			exit;
 		}
 		
 		$file_id = isset($_POST['file_id']) ? sanitize_text_field($_POST['file_id']) : '';
@@ -494,7 +679,8 @@ class CSD_Import_Export {
 		$mapping = isset($_POST['mapping']) ? $_POST['mapping'] : array();
 		
 		if (empty($file_id) || empty($import_type) || empty($mapping)) {
-			wp_send_json_error(array('message' => __('Missing required import parameters.', 'csd-manager')));
+			wp_send_json_error(array('message' => 'Missing required import parameters.'));
+			exit;
 		}
 		
 		// Get temporary file path
@@ -503,14 +689,16 @@ class CSD_Import_Export {
 		$file_path = $temp_dir . $file_id . '.csv';
 		
 		if (!file_exists($file_path)) {
-			wp_send_json_error(array('message' => __('Import file not found.', 'csd-manager')));
+			wp_send_json_error(array('message' => 'Import file not found.'));
+			exit;
 		}
 		
 		// Open CSV file
 		$file = fopen($file_path, 'r');
 		
 		if (!$file) {
-			wp_send_json_error(array('message' => __('Could not open import file.', 'csd-manager')));
+			wp_send_json_error(array('message' => 'Could not open import file.'));
+			exit;
 		}
 		
 		// Get headers
@@ -518,7 +706,8 @@ class CSD_Import_Export {
 		
 		if (!$headers) {
 			fclose($file);
-			wp_send_json_error(array('message' => __('Could not read CSV headers.', 'csd-manager')));
+			wp_send_json_error(array('message' => 'Could not read CSV headers.'));
+			exit;
 		}
 		
 		$wpdb = csd_db_connection();
@@ -537,12 +726,13 @@ class CSD_Import_Export {
 		try {
 			// Process each row
 			$row_number = 1;
+			$processed_schools = array(); // Track processed schools to avoid duplicates
 			
 			while (($row = fgetcsv($file)) !== false) {
 				$row_number++;
 				
 				if (count($row) !== count($headers)) {
-					$results['errors'][] = sprintf(__('Row %d: Column count mismatch, skipping.', 'csd-manager'), $row_number);
+					$results['errors'][] = "Row {$row_number}: Column count mismatch, skipping.";
 					continue;
 				}
 				
@@ -550,7 +740,12 @@ class CSD_Import_Export {
 				$row_data = array();
 				foreach ($headers as $index => $header) {
 					if (isset($mapping[$header])) {
-						$row_data[$mapping[$header]] = $row[$index];
+						// Handle special case for sport___department
+						if ($header === 'sport___department' && $mapping[$header] === 'sport_department') {
+							$row_data['sport_department'] = $row[$index];
+						} else {
+							$row_data[$mapping[$header]] = $row[$index];
+						}
 					}
 				}
 				
@@ -559,12 +754,53 @@ class CSD_Import_Export {
 					$this->process_school_import($row_data, $update_existing, $results);
 				} elseif ($import_type === 'staff') {
 					$this->process_staff_import($row_data, $update_existing, $results);
-				} elseif ($import_type === 'both') {
-					$school_id = $this->process_school_import($row_data, $update_existing, $results);
+				} elseif ($import_type === 'both' || $import_type === 'combined') {
+					// For combined format, each row has both staff and school information
+					// We need to first process the school, then the staff member
 					
-					if ($school_id) {
-						$row_data['school_id'] = $school_id;
-						$this->process_staff_import($row_data, $update_existing, $results);
+					// Extract school data from the row
+					$school_data = array();
+					foreach ($row_data as $key => $value) {
+						// Check if this is a school field
+						if (in_array($key, array(
+							'school_name', 'street_address_line_1', 'street_address_line_2', 
+							'street_address_line_3', 'city', 'state', 'zipcode', 'country', 
+							'county', 'school_divisions', 'school_conferences', 'school_level', 
+							'school_type', 'school_enrollment', 'mascot', 'school_colors', 
+							'school_website', 'athletics_website', 'athletics_phone', 'football_division'
+						))) {
+							$school_data[$key] = $value;
+						}
+					}
+					
+					// Only process the school if it has a name
+					if (!empty($school_data['school_name'])) {
+						// Check if we've already processed this school in this import
+						if (!isset($processed_schools[$school_data['school_name']])) {
+							$school_id = $this->process_school_import($school_data, $update_existing, $results);
+							if ($school_id) {
+								$processed_schools[$school_data['school_name']] = $school_id;
+							}
+						} else {
+							$school_id = $processed_schools[$school_data['school_name']];
+						}
+						
+						// Extract staff data
+						$staff_data = array();
+						foreach ($row_data as $key => $value) {
+							// Check if this is a staff field
+							if (in_array($key, array(
+								'full_name', 'title', 'sport_department', 'email', 'phone'
+							))) {
+								$staff_data[$key] = $value;
+							}
+						}
+						
+						// Only process staff if there's a full name
+						if (!empty($staff_data['full_name']) && $school_id) {
+							$staff_data['school_id'] = $school_id;
+							$this->process_staff_import($staff_data, $update_existing, $results);
+						}
 					}
 				}
 			}
@@ -582,6 +818,7 @@ class CSD_Import_Export {
 			wp_send_json_success(array(
 				'results_html' => $results_html
 			));
+			exit;
 		} catch (Exception $e) {
 			// Rollback transaction
 			$wpdb->query('ROLLBACK');
@@ -590,6 +827,7 @@ class CSD_Import_Export {
 			fclose($file);
 			
 			wp_send_json_error(array('message' => $e->getMessage()));
+			exit;
 		}
 	}
 	
@@ -606,7 +844,7 @@ class CSD_Import_Export {
 		
 		// Check for required fields
 		if (empty($row_data['school_name'])) {
-			$results['errors'][] = __('Missing required field: School Name', 'csd-manager');
+			$results['errors'][] = 'Missing required field: School Name';
 			return false;
 		}
 		
@@ -625,7 +863,7 @@ class CSD_Import_Export {
 		);
 		
 		foreach ($school_fields as $field) {
-			if (isset($row_data[$field])) {
+			if (isset($row_data[$field]) && !empty($row_data[$field])) {
 				if ($field === 'school_website' || $field === 'athletics_website') {
 					$school_data[$field] = esc_url_raw($row_data[$field]);
 				} elseif ($field === 'school_enrollment') {
@@ -655,7 +893,7 @@ class CSD_Import_Export {
 					$results['schools_updated']++;
 					return $existing_school->id;
 				} else {
-					$results['errors'][] = sprintf(__('Error updating school: %s', 'csd-manager'), $school_data['school_name']);
+					$results['errors'][] = "Error updating school: {$school_data['school_name']}";
 					return false;
 				}
 			} else {
@@ -675,7 +913,7 @@ class CSD_Import_Export {
 				$results['schools_added']++;
 				return $wpdb->insert_id;
 			} else {
-				$results['errors'][] = sprintf(__('Error adding school: %s', 'csd-manager'), $school_data['school_name']);
+				$results['errors'][] = "Error adding school: {$school_data['school_name']}";
 				return false;
 			}
 		}
@@ -694,7 +932,7 @@ class CSD_Import_Export {
 		
 		// Check for required fields
 		if (empty($row_data['full_name'])) {
-			$results['errors'][] = __('Missing required field: Full Name', 'csd-manager');
+			$results['errors'][] = 'Missing required field: Full Name';
 			return false;
 		}
 		
@@ -707,7 +945,7 @@ class CSD_Import_Export {
 		$staff_fields = array('title', 'sport_department', 'email', 'phone');
 		
 		foreach ($staff_fields as $field) {
-			if (isset($row_data[$field])) {
+			if (isset($row_data[$field]) && !empty($row_data[$field])) {
 				if ($field === 'email') {
 					$staff_data[$field] = sanitize_email($row_data[$field]);
 				} else {
@@ -721,11 +959,12 @@ class CSD_Import_Export {
 		
 		if (isset($row_data['school_id'])) {
 			$school_id = intval($row_data['school_id']);
-		} elseif (isset($row_data['school_identifier'])) {
+		} elseif (isset($row_data['school_identifier']) || isset($row_data['school_name'])) {
 			// Look up school by name
+			$school_name = isset($row_data['school_identifier']) ? $row_data['school_identifier'] : $row_data['school_name'];
 			$school = $wpdb->get_row($wpdb->prepare(
 				"SELECT id FROM " . csd_table('schools') . " WHERE school_name = %s",
-				$row_data['school_identifier']
+				$school_name
 			));
 			
 			if ($school) {
@@ -734,10 +973,23 @@ class CSD_Import_Export {
 		}
 		
 		// Check if staff already exists
-		$existing_staff = $wpdb->get_row($wpdb->prepare(
-			"SELECT id FROM " . csd_table('staff') . " WHERE full_name = %s",
-			$staff_data['full_name']
-		));
+		$existing_staff = null;
+		
+		// First try to find by email if available
+		if (!empty($staff_data['email'])) {
+			$existing_staff = $wpdb->get_row($wpdb->prepare(
+				"SELECT id FROM " . csd_table('staff') . " WHERE email = %s",
+				$staff_data['email']
+			));
+		}
+		
+		// If not found by email, try to find by name
+		if (!$existing_staff) {
+			$existing_staff = $wpdb->get_row($wpdb->prepare(
+				"SELECT id FROM " . csd_table('staff') . " WHERE full_name = %s",
+				$staff_data['full_name']
+			));
+		}
 		
 		if ($existing_staff) {
 			if ($update_existing) {
@@ -752,7 +1004,7 @@ class CSD_Import_Export {
 					$results['staff_updated']++;
 					$staff_id = $existing_staff->id;
 				} else {
-					$results['errors'][] = sprintf(__('Error updating staff: %s', 'csd-manager'), $staff_data['full_name']);
+					$results['errors'][] = "Error updating staff: {$staff_data['full_name']}";
 					return false;
 				}
 			} else {
@@ -772,7 +1024,7 @@ class CSD_Import_Export {
 				$results['staff_added']++;
 				$staff_id = $wpdb->insert_id;
 			} else {
-				$results['errors'][] = sprintf(__('Error adding staff: %s', 'csd-manager'), $staff_data['full_name']);
+				$results['errors'][] = "Error adding staff: {$staff_data['full_name']}";
 				return false;
 			}
 		}
@@ -808,17 +1060,17 @@ class CSD_Import_Export {
 	private function generate_import_results_html($results) {
 		$html = '<div class="csd-import-summary">';
 		
-		$html .= '<h4>' . __('Import Summary', 'csd-manager') . '</h4>';
+		$html .= '<h4>Import Summary</h4>';
 		
 		$html .= '<ul>';
-		$html .= '<li>' . sprintf(__('Schools added: %d', 'csd-manager'), $results['schools_added']) . '</li>';
-		$html .= '<li>' . sprintf(__('Schools updated: %d', 'csd-manager'), $results['schools_updated']) . '</li>';
-		$html .= '<li>' . sprintf(__('Staff added: %d', 'csd-manager'), $results['staff_added']) . '</li>';
-		$html .= '<li>' . sprintf(__('Staff updated: %d', 'csd-manager'), $results['staff_updated']) . '</li>';
+		$html .= '<li>Schools added: ' . $results['schools_added'] . '</li>';
+		$html .= '<li>Schools updated: ' . $results['schools_updated'] . '</li>';
+		$html .= '<li>Staff added: ' . $results['staff_added'] . '</li>';
+		$html .= '<li>Staff updated: ' . $results['staff_updated'] . '</li>';
 		$html .= '</ul>';
 		
 		if (!empty($results['errors'])) {
-			$html .= '<h4>' . __('Errors', 'csd-manager') . '</h4>';
+			$html .= '<h4>Errors</h4>';
 			$html .= '<ul class="csd-import-errors">';
 			
 			foreach ($results['errors'] as $error) {
@@ -837,13 +1089,16 @@ class CSD_Import_Export {
 	 * AJAX handler for exporting data
 	 */
 	public function ajax_export_data() {
-		check_admin_referer('csd-ajax-nonce', 'nonce');
-		
-		if (!current_user_can('manage_csd')) {
-			wp_die(__('You do not have permission to perform this action.', 'csd-manager'));
+		// Check nonce
+		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'csd-ajax-nonce')) {
+			wp_die('Security check failed.');
 		}
 		
-		$export_type = isset($_POST['export_type']) ? sanitize_text_field($_POST['export_type']) : 'schools';
+		if (!current_user_can('manage_options')) {
+			wp_die('You do not have permission to perform this action.');
+		}
+		
+		$export_type = isset($_POST['export_type']) ? sanitize_text_field($_POST['export_type']) : 'combined';
 		$export_school = isset($_POST['export_school']) ? intval($_POST['export_school']) : 0;
 		$include_headers = isset($_POST['include_headers']) ? filter_var($_POST['include_headers'], FILTER_VALIDATE_BOOLEAN) : true;
 		
@@ -864,8 +1119,8 @@ class CSD_Import_Export {
 			$this->export_schools($output, $include_headers, $export_school);
 		} elseif ($export_type === 'staff') {
 			$this->export_staff($output, $include_headers, $export_school);
-		} elseif ($export_type === 'both') {
-			$this->export_schools_with_staff($output, $include_headers, $export_school);
+		} elseif ($export_type === 'combined') {
+			$this->export_combined_format($output, $include_headers, $export_school);
 		}
 		
 		fclose($output);
@@ -888,8 +1143,7 @@ class CSD_Import_Export {
 			'city', 'state', 'zipcode', 'country', 'county',
 			'school_divisions', 'school_conferences', 'school_level', 'school_type',
 			'school_enrollment', 'mascot', 'school_colors',
-			'school_website', 'athletics_website', 'athletics_phone', 'football_division',
-			'date_created', 'date_updated'
+			'school_website', 'athletics_website', 'athletics_phone', 'football_division'
 		);
 		
 		if ($include_headers) {
@@ -939,7 +1193,7 @@ class CSD_Import_Export {
 		// Define headers
 		$headers = array(
 			'full_name', 'title', 'sport_department', 'email', 'phone',
-			'school_identifier', 'date_created', 'date_updated'
+			'school_identifier'
 		);
 		
 		if ($include_headers) {
@@ -981,26 +1235,23 @@ class CSD_Import_Export {
 	}
 	
 	/**
-	 * Export schools with staff data
+	 * Export data in the combined format
 	 * 
 	 * @param resource $output Output handle
 	 * @param bool $include_headers Whether to include headers
 	 * @param int $school_id Specific school ID to export
 	 */
-	private function export_schools_with_staff($output, $include_headers, $school_id = 0) {
+	private function export_combined_format($output, $include_headers, $school_id = 0) {
 		$wpdb = csd_db_connection();
 		
-		// Define headers
+		// Define headers - match the expected format
 		$headers = array(
-			// School fields
+			'full_name', 'title', 'phone', 'email', 'sport___department',
 			'school_name', 'street_address_line_1', 'street_address_line_2', 'street_address_line_3',
-			'city', 'state', 'zipcode', 'country', 'county',
-			'school_divisions', 'school_conferences', 'school_level', 'school_type',
-			'school_enrollment', 'mascot', 'school_colors',
-			'school_website', 'athletics_website', 'athletics_phone', 'football_division',
-			
-			// Staff fields
-			'full_name', 'title', 'sport_department', 'email', 'phone'
+			'city', 'state', 'county', 'zipcode', 'country', 'school_level',
+			'school_website', 'athletics_website', 'athletics_phone',
+			'mascot', 'school_type', 'school_enrollment', 'football_division',
+			'school_colors', 'school_divisions', 'school_conferences'
 		);
 		
 		if ($include_headers) {
@@ -1008,11 +1259,17 @@ class CSD_Import_Export {
 		}
 		
 		// Build query
-		$query = "SELECT sch.*, s.full_name, s.title, s.sport_department, s.email, s.phone
-				  FROM " . csd_table('schools') . " sch
-				  LEFT JOIN " . csd_table('school_staff') . " ss ON sch.id = ss.school_id
-				  LEFT JOIN " . csd_table('staff') . " s ON ss.staff_id = s.id";
-		 
+		$query = "SELECT 
+				s.full_name, s.title, s.phone, s.email, s.sport_department as sport___department,
+				sch.school_name, sch.street_address_line_1, sch.street_address_line_2, sch.street_address_line_3,
+				sch.city, sch.state, sch.county, sch.zipcode, sch.country, sch.school_level,
+				sch.school_website, sch.athletics_website, sch.athletics_phone,
+				sch.mascot, sch.school_type, sch.school_enrollment, sch.football_division,
+				sch.school_colors, sch.school_divisions, sch.school_conferences
+			  FROM " . csd_table('staff') . " s
+			  JOIN " . csd_table('school_staff') . " ss ON s.id = ss.staff_id
+			  JOIN " . csd_table('schools') . " sch ON ss.school_id = sch.id";
+		
 		$query_args = array();
 		
 		if ($school_id > 0) {
