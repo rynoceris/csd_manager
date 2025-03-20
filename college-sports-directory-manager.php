@@ -158,6 +158,36 @@ function csd_ajax_filter_staff_wrapper() {
 	$shortcodes->ajax_filter_staff();
 }
 
+// Import/Export AJAX handlers
+add_action('wp_ajax_csd_preview_import', 'csd_ajax_preview_import_wrapper');
+function csd_ajax_preview_import_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/import-export.php');
+	$import_export = new CSD_Import_Export();
+	$import_export->ajax_preview_import();
+}
+
+add_action('wp_ajax_csd_process_import', 'csd_ajax_process_import_wrapper');
+function csd_ajax_process_import_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/import-export.php');
+	$import_export = new CSD_Import_Export();
+	$import_export->ajax_process_import();
+}
+
+add_action('wp_ajax_csd_export_data', 'csd_ajax_export_data_wrapper');
+function csd_ajax_export_data_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/import-export.php');
+	$import_export = new CSD_Import_Export();
+	$import_export->ajax_export_data();
+}
+
+// Debug test function - only needed for testing
+add_action('wp_ajax_csd_test_simple', 'csd_ajax_test_simple_wrapper');
+function csd_ajax_test_simple_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/import-export.php');
+	$import_export = new CSD_Import_Export();
+	$import_export->ajax_test_simple();
+}
+
 /**
  * Main plugin class
  */
