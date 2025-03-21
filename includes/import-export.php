@@ -293,8 +293,8 @@ class CSD_Import_Export {
 								// Display preview data
 								$('#csd-preview-content').html(response.data.preview_html);
 								
-								// Set up column mapping
-								setupColumnMapping(response.data.columns, response.data.import_type);
+								// Set up column mapping - UPDATED TO PASS THE EXPECTED COLUMNS
+								setupColumnMapping(response.data.columns, response.data.import_type, response.data.expected_columns);
 								
 								// Store file data for processing
 								$('#csd-process-import').data('file_id', response.data.file_id);
@@ -319,11 +319,11 @@ class CSD_Import_Export {
 				$('#csd-process-import').on('click', function() {
 					var mappingData = {};
 					$('.csd-column-map').each(function() {
-						var csvColumn = $(this).data('column');
-						var dbField = $(this).val();
+						var dbField = $(this).data('field');
+						var csvColumn = $(this).val();
 						
-						if (dbField) {
-							mappingData[csvColumn] = dbField;
+						if (csvColumn) {
+							mappingData[dbField] = csvColumn;
 						}
 					});
 					
@@ -441,9 +441,15 @@ class CSD_Import_Export {
 				});
 				
 				// Function to set up column mapping UI
-				function setupColumnMapping(columns, importType) {
+				function setupColumnMapping(columns, importType, expectedColumns) {
 					var $mappingFields = $('#csd-mapping-fields');
 					$mappingFields.empty();
+					
+					// Use the passed expectedColumns parameter instead of trying to access response
+					expectedColumns = expectedColumns || [];
+					
+					console.log('Original CSV columns:', columns);
+					console.log('Expected DB columns:', expectedColumns);
 					
 					// Determine available fields based on import type
 					var schoolFields = {
@@ -492,41 +498,38 @@ class CSD_Import_Export {
 						$.extend(availableFields, schoolFields, staffFields);
 					}
 					
-					// Create mapping UI for each CSV column
-					$.each(columns, function(index, column) {
-						var fieldName = column.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
+					// Create mapping UI for each expected column from the import type
+					$.each(expectedColumns, function(index, dbField) {
 						var mappingField = $('<div class="csd-mapping-field"></div>');
+						var label = availableFields[dbField] || dbField;
 						
-						// Attempt to automatically map fields by name similarity
-						var matchedField = '';
+						mappingField.append('<label>' + label + ':</label>');
 						
-						$.each(availableFields, function(dbField, label) {
-							// Special case for sport___department (3 underscores)
-							if (column === 'sport___department' && dbField === 'sport_department') {
-								matchedField = dbField;
-								return false; // Break the loop
+						var select = $('<select class="csd-column-map" data-field="' + dbField + '"></select>');
+						select.append('<option value=""><?php _e('-- Not Mapped --', 'csd-manager'); ?></option>');
+						
+						// Add each CSV column as an option
+						$.each(columns, function(i, csvColumn) {
+							var selected = '';
+							
+							// Try to auto-match columns
+							if (
+								// Exact match
+								(csvColumn && typeof csvColumn === 'string' && csvColumn.toLowerCase() === dbField.toLowerCase()) ||
+								// sport___department special case
+								(csvColumn === 'sport___department' && dbField === 'sport_department') ||
+								// Similar names (contains)
+								(csvColumn && typeof csvColumn === 'string' && 
+								 (csvColumn.toLowerCase().indexOf(dbField.toLowerCase()) !== -1 ||
+								  dbField.toLowerCase().indexOf(csvColumn.toLowerCase()) !== -1))
+							) {
+								selected = ' selected';
 							}
 							
-							// Check for exact match
-							if (fieldName === dbField) {
-								matchedField = dbField;
-								return false; // Break the loop
+							// Only add valid columns
+							if (csvColumn && typeof csvColumn === 'string') {
+								select.append('<option value="' + csvColumn + '"' + selected + '>' + csvColumn + '</option>');
 							}
-							
-							// Check for name contained in field
-							if (fieldName.indexOf(dbField) !== -1 || dbField.indexOf(fieldName) !== -1) {
-								matchedField = dbField;
-							}
-						});
-						
-						mappingField.append('<label>' + column + ':</label>');
-						
-						var select = $('<select class="csd-column-map" data-column="' + column + '"></select>');
-						select.append('<option value=""><?php _e('-- Ignore this column --', 'csd-manager'); ?></option>');
-						
-						$.each(availableFields, function(dbField, label) {
-							var selected = dbField === matchedField ? ' selected' : '';
-							select.append('<option value="' + dbField + '"' + selected + '>' + label + '</option>');
 						});
 						
 						mappingField.append(select);
@@ -586,6 +589,16 @@ class CSD_Import_Export {
 			exit;
 		}
 		
+		// Try to detect and fix encoding issues
+		$file_content = file_get_contents($temp_file);
+		
+		// Remove UTF-8 BOM if present
+		$bom = pack('H*', 'EFBBBF');
+		$file_content = preg_replace("/^$bom/", '', $file_content);
+		
+		// Re-save the file with proper encoding
+		file_put_contents($temp_file, $file_content);
+		
 		// Read CSV file for preview
 		$file = fopen($temp_file, 'r');
 		if (!$file) {
@@ -593,43 +606,70 @@ class CSD_Import_Export {
 			exit;
 		}
 		
-		// Get headers
-		$headers = fgetcsv($file);
-		if (!$headers) {
+		// Get raw headers and rows for display
+		$raw_headers = fgetcsv($file);
+		if (!$raw_headers) {
 			fclose($file);
 			@unlink($temp_file);
 			wp_send_json_error(array('message' => 'Could not read CSV headers.'));
 			exit;
 		}
 		
-		// Get first few rows for preview
+		// Get first few rows for preview table display
 		$preview_rows = array();
 		$max_preview_rows = 5;
 		$row_count = 0;
 		
 		while (($row = fgetcsv($file)) !== false && $row_count < $max_preview_rows) {
-			if (count($row) === count($headers)) {
-				$preview_rows[] = $row;
-			}
+			$preview_rows[] = $row;
 			$row_count++;
 		}
 		
 		// Close file
 		fclose($file);
 		
+		// COMPLETELY IGNORE CSV HEADERS AND USE PREDEFINED HEADERS ONLY
+		// This is the key fix - we're not even attempting to use the headers from the file
+		
+		// Define known expected headers based on import type
+		if ($import_type === 'schools') {
+			$expected_headers = array(
+				'school_name', 'street_address_line_1', 'street_address_line_2', 'street_address_line_3',
+				'city', 'state', 'zipcode', 'country', 'county',
+				'school_divisions', 'school_conferences', 'school_level', 'school_type',
+				'school_enrollment', 'mascot', 'school_colors',
+				'school_website', 'athletics_website', 'athletics_phone', 'football_division'
+			);
+		} elseif ($import_type === 'staff') {
+			$expected_headers = array(
+				'full_name', 'title', 'sport_department', 'email', 'phone', 'school_identifier'
+			);
+		} else {
+			// Combined format
+			$expected_headers = array(
+				'full_name', 'title', 'phone', 'email', 'sport_department',
+				'school_name', 'street_address_line_1', 'street_address_line_2', 'street_address_line_3',
+				'city', 'state', 'county', 'zipcode', 'country', 'school_level',
+				'school_website', 'athletics_website', 'athletics_phone',
+				'mascot', 'school_type', 'school_enrollment', 'football_division',
+				'school_colors', 'school_divisions', 'school_conferences'
+			);
+		}
+		
 		// Generate preview HTML
 		$preview_html = '<div class="csd-preview-table-wrapper">';
+		$preview_html .= '<h4>CSV File Preview</h4>';
 		$preview_html .= '<table class="wp-list-table widefat fixed striped">';
 		$preview_html .= '<thead><tr>';
 		
-		foreach ($headers as $header) {
+		foreach ($raw_headers as $header) {
 			$preview_html .= '<th>' . esc_html($header) . '</th>';
 		}
 		
 		$preview_html .= '</tr></thead><tbody>';
 		
 		if (empty($preview_rows)) {
-			$preview_html .= '<tr><td colspan="' . count($headers) . '">No valid data rows found in CSV.</td></tr>';
+			$preview_html .= '<tr><td colspan="' . count($raw_headers) . '">No valid data rows found in CSV.</td></tr>';
 		} else {
 			foreach ($preview_rows as $row) {
 				$preview_html .= '<tr>';
@@ -642,12 +682,20 @@ class CSD_Import_Export {
 			}
 		}
 		
-		$preview_html .= '</tbody></table></div>';
+		$preview_html .= '</tbody></table>';
 		
-		// Send success response
+		// Add a note about automatic column detection
+		$preview_html .= '<div style="margin-top: 15px; padding: 10px; background-color: #f0f0f0; border-left: 4px solid #46b450;">';
+		$preview_html .= '<p><strong>Note:</strong> Standard column headers have been automatically detected based on your import type. Please map the columns from your CSV to the appropriate database fields below.</p>';
+		$preview_html .= '</div>';
+		
+		$preview_html .= '</div>';
+		
+		// Send success response with predefined headers only
 		wp_send_json_success(array(
 			'preview_html' => $preview_html,
-			'columns' => $headers,
+			'columns' => $raw_headers,  // Send raw headers for display
+			'expected_columns' => $expected_headers, // Send expected columns for mapping
 			'import_type' => $import_type,
 			'update_existing' => $update_existing,
 			'file_id' => $file_id
@@ -661,6 +709,9 @@ class CSD_Import_Export {
 	public function ajax_process_import() {
 		// Explicitly state content type for response
 		header('Content-Type: application/json');
+		
+		// Start debugging
+		error_log('=== STARTING IMPORT PROCESS ===');
 		
 		// Check nonce
 		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'csd-ajax-nonce')) {
@@ -678,7 +729,13 @@ class CSD_Import_Export {
 		$update_existing = isset($_POST['update_existing']) ? filter_var($_POST['update_existing'], FILTER_VALIDATE_BOOLEAN) : false;
 		$mapping = isset($_POST['mapping']) ? $_POST['mapping'] : array();
 		
+		// Debug
+		error_log('Import type: ' . $import_type);
+		error_log('Update existing: ' . ($update_existing ? 'Yes' : 'No'));
+		error_log('Import mapping: ' . print_r($mapping, true));
+		
 		if (empty($file_id) || empty($import_type) || empty($mapping)) {
+			error_log('ERROR: Missing required import parameters');
 			wp_send_json_error(array('message' => 'Missing required import parameters.'));
 			exit;
 		}
@@ -689,6 +746,7 @@ class CSD_Import_Export {
 		$file_path = $temp_dir . $file_id . '.csv';
 		
 		if (!file_exists($file_path)) {
+			error_log('ERROR: Import file not found: ' . $file_path);
 			wp_send_json_error(array('message' => 'Import file not found.'));
 			exit;
 		}
@@ -697,6 +755,7 @@ class CSD_Import_Export {
 		$file = fopen($file_path, 'r');
 		
 		if (!$file) {
+			error_log('ERROR: Could not open import file');
 			wp_send_json_error(array('message' => 'Could not open import file.'));
 			exit;
 		}
@@ -706,9 +765,14 @@ class CSD_Import_Export {
 		
 		if (!$headers) {
 			fclose($file);
+			error_log('ERROR: Could not read CSV headers');
 			wp_send_json_error(array('message' => 'Could not read CSV headers.'));
 			exit;
 		}
+		
+		// Debug log
+		error_log('CSV Headers: ' . print_r($headers, true));
+		error_log('Header count: ' . count($headers));
 		
 		$wpdb = csd_db_connection();
 		
@@ -733,20 +797,50 @@ class CSD_Import_Export {
 				
 				if (count($row) !== count($headers)) {
 					$results['errors'][] = "Row {$row_number}: Column count mismatch, skipping.";
+					error_log("Row {$row_number}: Column count mismatch - headers: " . count($headers) . ", row: " . count($row));
 					continue;
 				}
 				
-				// Create associative array from row
+				// Create associative array from row using our new mapping approach
 				$row_data = array();
-				foreach ($headers as $index => $header) {
-					if (isset($mapping[$header])) {
-						// Handle special case for sport___department
-						if ($header === 'sport___department' && $mapping[$header] === 'sport_department') {
+				
+				// THE KEY CHANGE: Process the mapping correctly
+				// The mapping is now in the format db_field => csv_column
+				foreach ($mapping as $dbField => $csvColumn) {
+					// Find the index of this CSV column in the headers array
+					$index = array_search($csvColumn, $headers);
+					
+					// Only process if we found the column and have a value
+					if ($index !== false && isset($row[$index])) {
+						// Special handling for sport_department
+						if ($csvColumn === 'sport___department' && $dbField === 'sport_department') {
 							$row_data['sport_department'] = $row[$index];
 						} else {
-							$row_data[$mapping[$header]] = $row[$index];
+							$row_data[$dbField] = $row[$index];
 						}
 					}
+				}
+				
+				// Debug the first row in detail
+				if ($row_number == 2) {
+					error_log('Raw CSV row: ' . print_r($row, true));
+					error_log('Processed row data: ' . print_r($row_data, true));
+					
+					// Check for required fields
+					if (empty($row_data['school_name'])) {
+						error_log('WARNING: Missing school_name in the first row');
+					}
+					
+					if (empty($row_data['full_name'])) {
+						error_log('WARNING: Missing full_name in the first row');
+					}
+				}
+				
+				// Skip empty rows
+				if (empty($row_data)) {
+					$results['errors'][] = "Row {$row_number}: No valid data after mapping, skipping.";
+					error_log("Row {$row_number}: No valid data after mapping, skipping.");
+					continue;
 				}
 				
 				// Process based on import type
@@ -775,14 +869,20 @@ class CSD_Import_Export {
 					
 					// Only process the school if it has a name
 					if (!empty($school_data['school_name'])) {
+						error_log("Processing school: " . $school_data['school_name']);
+						
 						// Check if we've already processed this school in this import
 						if (!isset($processed_schools[$school_data['school_name']])) {
 							$school_id = $this->process_school_import($school_data, $update_existing, $results);
 							if ($school_id) {
+								error_log("School processed, ID: " . $school_id);
 								$processed_schools[$school_data['school_name']] = $school_id;
+							} else {
+								error_log("Failed to process school: " . $school_data['school_name']);
 							}
 						} else {
 							$school_id = $processed_schools[$school_data['school_name']];
+							error_log("Using already processed school, ID: " . $school_id);
 						}
 						
 						// Extract staff data
@@ -798,15 +898,33 @@ class CSD_Import_Export {
 						
 						// Only process staff if there's a full name
 						if (!empty($staff_data['full_name']) && $school_id) {
+							error_log("Processing staff member: " . $staff_data['full_name']);
 							$staff_data['school_id'] = $school_id;
-							$this->process_staff_import($staff_data, $update_existing, $results);
+							$staff_result = $this->process_staff_import($staff_data, $update_existing, $results);
+							if ($staff_result) {
+								error_log("Staff processed, ID: " . $staff_result);
+							} else {
+								error_log("Failed to process staff: " . $staff_data['full_name']);
+							}
+						} else {
+							if (empty($staff_data['full_name'])) {
+								error_log("Missing full_name for staff member");
+							}
+							if (empty($school_id)) {
+								error_log("Missing school_id for staff member");
+							}
 						}
+					} else {
+						error_log("Missing school_name, skipping staff member");
 					}
 				}
 			}
 			
+			error_log("Import results: " . print_r($results, true));
+			
 			// Commit transaction
 			$wpdb->query('COMMIT');
+			error_log("Database transaction committed");
 			
 			// Close and delete file
 			fclose($file);
@@ -822,6 +940,7 @@ class CSD_Import_Export {
 		} catch (Exception $e) {
 			// Rollback transaction
 			$wpdb->query('ROLLBACK');
+			error_log("ERROR: Exception during import: " . $e->getMessage());
 			
 			// Close file
 			fclose($file);
