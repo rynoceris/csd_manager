@@ -3,7 +3,7 @@
  * Plugin Name: College Sports Directory Manager
  * Plugin URI: https://ryanours.com
  * Description: Manage college and university staff members and school information with search, sort, import, and shortcode capabilities.
- * Version: 1.0
+ * Version: 1.1
  * Author: Ryan Ours
  * Author URI: https://ryanours.com
  * Text Domain: csd-manager
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('CSD_MANAGER_VERSION', '1.0');
+define('CSD_MANAGER_VERSION', '1.1');
 define('CSD_MANAGER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CSD_MANAGER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -27,6 +27,7 @@ require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/import-export.php');
 require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/shortcodes.php');
 require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/functions.php');
 require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/database-connection.php');
+require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
 
 /**
  * Add this standalone activation function
@@ -188,6 +189,49 @@ function csd_ajax_test_simple_wrapper() {
 	$import_export->ajax_test_simple();
 }
 
+// Query Builder AJAX handlers
+add_action('wp_ajax_csd_run_custom_query', 'csd_ajax_run_custom_query_wrapper');
+function csd_ajax_run_custom_query_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
+	$query_builder = new CSD_Query_Builder();
+	$query_builder->ajax_run_custom_query();
+}
+
+add_action('wp_ajax_csd_get_field_values', 'csd_ajax_get_field_values_wrapper');
+function csd_ajax_get_field_values_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
+	$query_builder = new CSD_Query_Builder();
+	$query_builder->ajax_get_field_values();
+}
+
+add_action('wp_ajax_csd_save_query', 'csd_ajax_save_query_wrapper');
+function csd_ajax_save_query_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
+	$query_builder = new CSD_Query_Builder();
+	$query_builder->ajax_save_query();
+}
+
+add_action('wp_ajax_csd_load_query', 'csd_ajax_load_query_wrapper');
+function csd_ajax_load_query_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
+	$query_builder = new CSD_Query_Builder();
+	$query_builder->ajax_load_query();
+}
+
+add_action('wp_ajax_csd_delete_query', 'csd_ajax_delete_query_wrapper');
+function csd_ajax_delete_query_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
+	$query_builder = new CSD_Query_Builder();
+	$query_builder->ajax_delete_query();
+}
+
+add_action('wp_ajax_csd_export_query_results', 'csd_ajax_export_query_results_wrapper');
+function csd_ajax_export_query_results_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
+	$query_builder = new CSD_Query_Builder();
+	$query_builder->ajax_export_query_results();
+}
+
 /**
  * Main plugin class
  */
@@ -224,7 +268,7 @@ class CSD_Manager {
 		);
 		
 		if (in_array($hook, $admin_pages)) {
-			wp_enqueue_style('csd-admin-styles', CSD_MANAGER_PLUGIN_URL . 'assets/css/admin.css', array(), CSD_MANAGER_VERSION);
+			wp_enqueue_style('csd-admin-styles', CSD_MANAGER_PLUGIN_URL . 'assets/css/admin.css?v=1.1', array(), CSD_MANAGER_VERSION);
 			wp_enqueue_script('csd-admin-scripts', CSD_MANAGER_PLUGIN_URL . 'assets/js/admin.js', array('jquery', 'jquery-ui-sortable', 'jquery-ui-datepicker'), CSD_MANAGER_VERSION, true);
 			
 			// Add Ajax URL
@@ -281,6 +325,10 @@ class CSD_Manager {
 		
 		// Create shortcode view storage table
 		$this->create_shortcode_views_table();
+		
+		// Create query builder tables
+		$query_builder = new CSD_Query_Builder();
+		$query_builder->create_saved_queries_table();
 		
 		// Flush rewrite rules
 		flush_rewrite_rules();
