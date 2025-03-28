@@ -21,7 +21,8 @@ function csd_get_table_names() {
 		'schools' => 'csd_schools',
 		'staff' => 'csd_staff',
 		'school_staff' => 'csd_school_staff',
-		'shortcode_views' => 'csd_shortcode_views' // This table will be created by the plugin
+		'shortcode_views' => 'csd_shortcode_views', // This table will be created by the plugin
+		'saved_queries' => 'csd_saved_queries'
 	);
 }
 
