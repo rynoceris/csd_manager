@@ -78,6 +78,16 @@ class CSD_Admin_Menu {
 			'csd-shortcodes',
 			array(new CSD_Shortcodes(), 'render_admin_page')
 		);
+		
+		// Add query builder submenu
+		add_submenu_page(
+			'csd-manager',
+			__('Query Builder', 'csd-manager'),
+			__('Query Builder', 'csd-manager'),
+			$capability,
+			'csd-query-builder',
+			array(new CSD_Query_Builder(), 'render_page')
+		);
 	}
 	
 	/**
