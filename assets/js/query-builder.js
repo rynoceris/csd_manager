@@ -21,7 +21,10 @@
 		// Initialize CodeMirror editor for SQL syntax highlighting
 		function initCodeMirror() {
 			const sqlTextarea = document.getElementById('csd-sql-query');
-			if (sqlTextarea && !sqlEditor) {
+			if (sqlTextarea && !sqlEditor && typeof CodeMirror !== 'undefined') {
+				// Clear the textarea content before initializing CodeMirror
+				sqlTextarea.value = sqlTextarea.value.trim();
+				
 				sqlEditor = CodeMirror.fromTextArea(sqlTextarea, {
 					mode: 'text/x-mysql',
 					theme: 'monokai',
@@ -47,10 +50,12 @@
 			}
 		}
 
-		// Call this after page load
-		if (typeof CodeMirror !== 'undefined') {
-			initCodeMirror();
-		}
+		// Call this after page load with a slight delay to ensure DOM is ready
+		setTimeout(function() {
+			if (typeof CodeMirror !== 'undefined') {
+				initCodeMirror();
+			}
+		}, 100);
 
 		// Tab switching
 		$('.csd-query-tab').on('click', function() {
@@ -285,12 +290,14 @@
 						// Update record count
 						$('#csd-record-count').text(response.data.count);
 						
-						// Show SQL query
+						// Show SQL query - clean up and format SQL before displaying
+						var cleanSql = formatSqlQuery(response.data.sql);
+						
 						if (sqlEditor) {
-							sqlEditor.setValue(formatSqlQuery(response.data.sql));
+							sqlEditor.setValue(cleanSql);
 							sqlEditor.refresh();
 						} else {
-							$('#csd-sql-query').val(formatSqlQuery(response.data.sql));
+							$('#csd-sql-query').val(cleanSql);
 						}
 						
 						// Show results table
@@ -766,12 +773,15 @@
 			});
 		}
 		
-		// Format SQL query with proper indentation (fixed to remove starting blank line)
+		// Format SQL query with proper indentation and cleanup
 		function formatSqlQuery(sql) {
-			if (!sql) return sql;
+			if (!sql) return '';
+			
+			// Trim the SQL to remove any whitespace at beginning and end
+			sql = sql.trim();
 			
 			// Replace multiple spaces with a single space
-			sql = sql.replace(/\s+/g, ' ').trim();
+			sql = sql.replace(/\s+/g, ' ');
 			
 			// Add line breaks after these SQL keywords
 			var keywords = ['SELECT', 'FROM', 'WHERE', 'LEFT JOIN', 'INNER JOIN', 'RIGHT JOIN', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT'];
