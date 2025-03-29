@@ -810,6 +810,33 @@ class CSD_Query_Builder {
 			  overflow-y: hidden;
 			  overflow-x: auto;
 			}
+			
+			.resizable-cm {
+			  resize: vertical;
+			  overflow: auto !important;
+			  min-height: 100px;
+			  transition: height 0.1s ease;
+			}
+			.CodeMirror {
+			  border: 1px solid #ddd;
+			  height: auto;
+			  transition: height 0.1s ease;
+			}
+			.CodeMirror-focused {
+			  border-color: #2271b1;
+			  box-shadow: 0 0 0 1px #2271b1;
+			}
+			.CodeMirror-scroll {
+			  min-height: 100px;
+			}
+			/* Dragging handle style */
+			.CodeMirror .CodeMirror-scrollbar-filler {
+			  background-color: #f0f0f0;
+			  cursor: ns-resize;
+			}
+			.CodeMirror:hover .CodeMirror-scrollbar-filler {
+			  background-color: #ddd;
+			}
 		</style>
 		<?php
 	}
