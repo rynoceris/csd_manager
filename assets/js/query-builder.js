@@ -18,7 +18,7 @@
 			};
 		}
 
-		// Replace your existing initCodeMirror function with this:
+		// Initialize CodeMirror with both auto and manual resizing capabilities
 		function initCodeMirror() {
 		  const sqlTextarea = document.getElementById('csd-sql-query');
 		  if (sqlTextarea && !sqlEditor && typeof CodeMirror !== 'undefined') {
@@ -35,13 +35,70 @@
 			  autoRefresh: true
 			});
 			
-			// Add click handler back
-			$(sqlEditor.getWrapperElement()).on('click', function() {
+			// Make wrapper resizable
+			const wrapper = sqlEditor.getWrapperElement();
+			$(wrapper).addClass('resizable-cm');
+			
+			// Add click handler for edit mode
+			$(wrapper).on('click', function() {
 			  if (sqlEditor.getOption('readOnly')) {
 				$('#csd-edit-sql').click();
 			  }
 			});
+			
+			// Set initial height
+			autoAdjustEditorHeight();
+			
+			// Make sure changes in content trigger height adjustment
+			sqlEditor.on('change', function() {
+			  autoAdjustEditorHeight();
+			});
 		  }
+		}
+		
+		// Function to adjust editor height based on content
+		function autoAdjustEditorHeight() {
+		  if (!sqlEditor) return;
+		  
+		  // Get the editor wrapper
+		  const wrapper = sqlEditor.getWrapperElement();
+		  
+		  // Get the content's height (accounting for line wrapping)
+		  sqlEditor.refresh(); // Ensure measurements are accurate
+		  const contentHeight = sqlEditor.getScrollInfo().height;
+		  
+		  // Set a minimum height and add some padding
+		  const newHeight = Math.max(100, contentHeight + 20);
+		  
+		  // Only adjust if not manually resized by user
+		  if (!$(wrapper).data('manually-resized')) {
+			$(wrapper).height(newHeight + 'px');
+			sqlEditor.refresh();
+		  }
+		}
+		
+		// Handler for when user manually resizes the editor
+		function setupManualResize() {
+		  const wrapper = sqlEditor?.getWrapperElement();
+		  if (!wrapper) return;
+		  
+		  // Track original height before manual resize
+		  $(wrapper).data('original-height', $(wrapper).height());
+		  
+		  // Use ResizeObserver to detect manual resizes
+		  const resizeObserver = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+			  const height = entry.contentRect.height;
+			  const originalHeight = $(wrapper).data('original-height');
+			  
+			  // If height has changed significantly from original, mark as manually resized
+			  if (Math.abs(height - originalHeight) > 10) {
+				$(wrapper).data('manually-resized', true);
+			  }
+			}
+		  });
+		  
+		  resizeObserver.observe(wrapper);
 		}
 		
 		// Add this function after initCodeMirror
@@ -86,9 +143,10 @@
 
 		// Call this after page load with a slight delay to ensure DOM is ready
 		setTimeout(function() {
-			if (typeof CodeMirror !== 'undefined') {
-				initCodeMirror();
-			}
+		  if (typeof CodeMirror !== 'undefined') {
+			initCodeMirror();
+			setupManualResize();
+		  }
 		}, 100);
 
 		// Tab switching
@@ -327,12 +385,23 @@
 						// Show SQL query - clean up and format SQL before displaying
 						var cleanSql = formatSqlQuery(response.data.sql);
 						
+						// In the run query AJAX success callback:
 						if (sqlEditor) {
-							sqlEditor.setValue(cleanSql);
-							adjustEditorHeight(cleanSql);
-							sqlEditor.refresh();
+						  // Reset manual resize flag when setting new content
+						  const wrapper = sqlEditor.getWrapperElement();
+						  $(wrapper).data('manually-resized', false);
+						  $(wrapper).data('original-height', null);
+						  
+						  sqlEditor.setValue(cleanSql);
+						  sqlEditor.refresh();
+						  
+						  // Auto-adjust height based on new content
+						  autoAdjustEditorHeight();
+						  
+						  // Setup manual resize tracking again
+						  setupManualResize();
 						} else {
-							$('#csd-sql-query').val(cleanSql);
+						  $('#csd-sql-query').val(cleanSql);
 						}
 						
 						// Show results table
@@ -496,10 +565,16 @@
 				// Clear results
 				$('#csd-record-count').text('0');
 				
+				// In the clear form handler where you reset the SQL editor
 				if (sqlEditor) {
-					sqlEditor.setValue('');
+				  // Reset manual resize flag
+				  const wrapper = sqlEditor.getWrapperElement();
+				  $(wrapper).data('manually-resized', false);
+				  
+				  sqlEditor.setValue('');
+				  autoAdjustEditorHeight();
 				} else {
-					$('#csd-sql-query').val('');
+				  $('#csd-sql-query').val('');
 				}
 				
 				$('#csd-query-results').html('');
