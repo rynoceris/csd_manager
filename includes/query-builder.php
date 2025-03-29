@@ -358,6 +358,7 @@ class CSD_Query_Builder {
 						</div>
 					</div>
 					
+					<!-- Replace the existing SQL query textarea with this -->
 					<div class="csd-query-sql-container">
 						<h4><?php _e('SQL Query', 'csd-manager'); ?></h4>
 						<textarea id="csd-sql-query" rows="8" readonly 
@@ -793,6 +794,7 @@ class CSD_Query_Builder {
 	
 	/**
 	 * AJAX handler for running a custom query
+	 * This should replace the existing ajax_run_custom_query method
 	 */
 	public function ajax_run_custom_query() {
 		// Check nonce
@@ -825,6 +827,9 @@ class CSD_Query_Builder {
 			// Build SQL query
 			$sql = $this->build_sql_query($form_data);
 			
+			// Clean the SQL query - fix any potential issues
+			$sql = $this->clean_sql_query($sql);
+			
 			// Run the query
 			$results = $this->execute_query($sql);
 			
@@ -843,6 +848,7 @@ class CSD_Query_Builder {
 	
 	/**
 	 * Run a custom SQL query
+	 * This should replace the existing run_custom_sql_query method
 	 */
 	private function run_custom_sql_query() {
 		$sql = trim($_POST['custom_sql']);
@@ -860,6 +866,9 @@ class CSD_Query_Builder {
 		}
 		
 		try {
+			// Clean the SQL query
+			$sql = $this->clean_sql_query($sql);
+			
 			// Run the query
 			$results = $this->execute_query($sql);
 			
@@ -874,6 +883,31 @@ class CSD_Query_Builder {
 		} catch (Exception $e) {
 			wp_send_json_error(array('message' => $e->getMessage()));
 		}
+	}
+	
+	/**
+	 * Clean an SQL query by removing unwanted characters
+	 * This is a new method to add to the class
+	 * 
+	 * @param string $sql The SQL query to clean
+	 * @return string Cleaned SQL query
+	 */
+	private function clean_sql_query($sql) {
+		// Make sure we have a string
+		if (!is_string($sql)) {
+			return '';
+		}
+		
+		// Trim whitespace
+		$sql = trim($sql);
+		
+		// Remove hexadecimal artifacts that might appear in LIKE clauses
+		$sql = preg_replace('/{[0-9a-f]+}/', '%', $sql);
+		
+		// Remove any double %% that might cause issues
+		$sql = str_replace('%%', '%', $sql);
+		
+		return $sql;
 	}
 	
 	/**
@@ -1123,6 +1157,7 @@ class CSD_Query_Builder {
 	
 	/**
 	 * Prepare value for SQL query
+	 * This replaces the current prepare_value method in the CSD_Query_Builder class
 	 * 
 	 * @param mixed $value Value to prepare
 	 * @return string Prepared value
@@ -1130,11 +1165,28 @@ class CSD_Query_Builder {
 	private function prepare_value($value) {
 		global $wpdb;
 		
-		// Use $wpdb->prepare for proper escaping
+		// Handle empty values
+		if (is_null($value) || $value === '') {
+			return "''";
+		}
+		
+		// Check if it's numeric
 		if (is_numeric($value)) {
 			return $value;
+		}
+		
+		// For text values, use proper escaping with $wpdb->prepare
+		// But manually handle the % characters for LIKE queries
+		if (strpos($value, '%') !== false) {
+			// Replace % with escaped version first to avoid SQL injection
+			$escaped_value = str_replace('%', '%%', $value);
+			// Then use $wpdb->prepare for proper escaping
+			$prepared = $wpdb->prepare('%s', $escaped_value);
+			// Then put back the % signs for LIKE queries
+			return str_replace('%%', '%', $prepared);
 		} else {
-			return "'" . esc_sql($value) . "'";
+			// Normal string escaping
+			return $wpdb->prepare('%s', $value);
 		}
 	}
 	
