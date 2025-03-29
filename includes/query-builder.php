@@ -149,6 +149,12 @@ class CSD_Query_Builder {
 			'nonce' => wp_create_nonce('csd-ajax-nonce')
 		));
 		
+		// Add this code right after wp_enqueue_script('csd-query-builder-js')
+		wp_enqueue_style('codemirror', 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css');
+		wp_enqueue_style('codemirror-theme', 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css');
+		wp_enqueue_script('codemirror', 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js', array('jquery'), null, true);
+		wp_enqueue_script('codemirror-sql', 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js', array('codemirror'), null, true);
+		
 		// Get saved queries for dropdown
 		$wpdb = csd_db_connection();
 		$saved_queries = $wpdb->get_results("SELECT id, query_name FROM " . csd_table('saved_queries') . " ORDER BY query_name");
@@ -355,8 +361,7 @@ class CSD_Query_Builder {
 					<div class="csd-query-sql-container">
 						<h4><?php _e('SQL Query', 'csd-manager'); ?></h4>
 						<textarea id="csd-sql-query" rows="8" readonly 
-							placeholder="<?php _e('SQL query will appear here after running', 'csd-manager'); ?>"
-							title="<?php _e('Click to edit', 'csd-manager'); ?>"></textarea>
+							placeholder="<?php _e('SQL query will appear here after running', 'csd-manager'); ?>"></textarea>
 						<div class="csd-sql-actions">
 							<button type="button" id="csd-edit-sql" class="button"><?php _e('Edit SQL', 'csd-manager'); ?></button>
 							<button type="button" id="csd-run-sql" class="button" style="display:none;"><?php _e('Run SQL', 'csd-manager'); ?></button>
@@ -710,6 +715,77 @@ class CSD_Query_Builder {
 			.csd-sql-actions {
 				margin-top: 10px;
 				margin-bottom: 20px;
+			}
+			
+			/* Add this to your CSS (either in the style tag in query-builder.php or in admin.css) */
+			.csd-results-table-wrapper {
+				overflow-x: auto;
+				max-width: 100%;
+				margin-bottom: 20px;
+				border: 1px solid #ddd;
+				border-radius: 4px;
+			}
+			
+			.csd-results-table-wrapper table {
+				table-layout: auto;  /* This enables auto-width columns */
+				border-collapse: collapse;
+				margin: 0;
+				min-width: 100%;
+			}
+			
+			.csd-results-table-wrapper th {
+				white-space: nowrap;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				background-color: #f5f5f5;
+				font-weight: 600;
+				position: sticky;
+				top: 0;
+				z-index: 10;
+			}
+			
+			.csd-results-table-wrapper td {
+				max-width: 300px;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			
+			/* Add tooltip-like behavior on hover */
+			.csd-results-table-wrapper td:hover {
+				white-space: normal;
+				overflow: visible;
+				position: relative;
+				background-color: #f9f9f9;
+				z-index: 1;
+				box-shadow: 0 0 5px rgba(0,0,0,0.2);
+			}
+			
+			/* Add this to your CSS */
+			.csd-resizable-table th {
+				position: relative;
+				padding-right: 20px;
+			}
+			
+			.csd-resizable-table th .resize-handle {
+				position: absolute;
+				top: 0;
+				right: 0;
+				width: 8px;
+				height: 100%;
+				cursor: col-resize;
+				user-select: none;
+			}
+			
+			.csd-resizable-table th .resize-handle:hover,
+			.csd-resizable-table th .resize-handle.resizing {
+				background-color: #0073aa;
+			}
+			
+			.csd-resizable-table th .th-content {
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
 			}
 		</style>
 		<?php
@@ -1094,7 +1170,7 @@ class CSD_Query_Builder {
 			$html = '<div class="notice notice-warning"><p>' . __('No results found.', 'csd-manager') . '</p></div>';
 		} else {
 			$html .= '<div class="csd-results-table-wrapper">';
-			$html .= '<table class="wp-list-table widefat fixed striped">';
+			$html .= '<table class="wp-list-table widefat fixed striped csd-resizable-table">';
 			
 			// Table headers
 			$html .= '<thead><tr>';
@@ -1105,7 +1181,7 @@ class CSD_Query_Builder {
 				$label = str_replace('_', ' ', $label);
 				$label = ucwords($label);
 				
-				$html .= '<th>' . esc_html($label) . '</th>';
+				$html .= '<th><div class="th-content">' . esc_html($label) . '</div><div class="resize-handle"></div></th>';
 			}
 			$html .= '</tr></thead>';
 			
