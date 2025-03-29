@@ -788,6 +788,28 @@ class CSD_Query_Builder {
 				text-overflow: ellipsis;
 				white-space: nowrap;
 			}
+			
+			/* Add this to your existing CSS in query-builder.php */
+			.CodeMirror {
+			  border: 1px solid #ddd;
+			  height: auto;
+			  min-height: 100px;
+			  transition: height 0.2s ease;
+			}
+			
+			/* Add this to restore resizable editor */
+			.CodeMirror {
+			  resize: vertical;
+			  overflow: auto !important;
+			  min-height: 150px;
+			  border: 1px solid #ddd;
+			}
+			
+			/* Make sure the content doesn't overflow */
+			.CodeMirror-scroll {
+			  overflow-y: hidden;
+			  overflow-x: auto;
+			}
 		</style>
 		<?php
 	}
