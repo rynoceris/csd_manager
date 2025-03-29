@@ -18,36 +18,70 @@
 			};
 		}
 
-		// Initialize CodeMirror editor for SQL syntax highlighting
+		// Replace your existing initCodeMirror function with this:
 		function initCodeMirror() {
-			const sqlTextarea = document.getElementById('csd-sql-query');
-			if (sqlTextarea && !sqlEditor && typeof CodeMirror !== 'undefined') {
-				// Clear the textarea content before initializing CodeMirror
-				sqlTextarea.value = sqlTextarea.value.trim();
-				
-				sqlEditor = CodeMirror.fromTextArea(sqlTextarea, {
-					mode: 'text/x-mysql',
-					theme: 'monokai',
-					lineNumbers: true,
-					indentWithTabs: true,
-					readOnly: true,
-					lineWrapping: true,
-					autoRefresh: true
-				});
-				
-				// Set the size and make it resizable
-				sqlEditor.setSize(null, 150);
-				
-				// Add resizable class to CodeMirror wrapper
-				$(sqlEditor.getWrapperElement()).addClass('resizable-cm');
-				
-				// Add click-to-edit functionality on the editor
-				$(sqlEditor.getWrapperElement()).on('click', function() {
-					if (sqlEditor.getOption('readOnly')) {
-						$('#csd-edit-sql').click();
-					}
-				});
-			}
+		  const sqlTextarea = document.getElementById('csd-sql-query');
+		  if (sqlTextarea && !sqlEditor && typeof CodeMirror !== 'undefined') {
+			// Clear any existing content first
+			sqlTextarea.value = '';
+			
+			sqlEditor = CodeMirror.fromTextArea(sqlTextarea, {
+			  mode: 'text/x-mysql',
+			  theme: 'monokai',
+			  lineNumbers: true,
+			  indentWithTabs: true,
+			  readOnly: true,
+			  lineWrapping: true,
+			  autoRefresh: true
+			});
+			
+			// Add click handler back
+			$(sqlEditor.getWrapperElement()).on('click', function() {
+			  if (sqlEditor.getOption('readOnly')) {
+				$('#csd-edit-sql').click();
+			  }
+			});
+		  }
+		}
+		
+		// Add this function after initCodeMirror
+		function adjustEditorHeight(sql) {
+		  if (!sqlEditor) return;
+		  
+		  // Count the number of lines in the SQL query
+		  const lines = (sql.match(/\n/g) || []).length + 1;
+		  
+		  // Set height based on line count (approximately 20px per line)
+		  const height = Math.max(150, Math.min(400, lines * 20)); 
+		  
+		  // Set the height
+		  $(sqlEditor.getWrapperElement()).height(height);
+		  
+		  // Refresh the editor
+		  sqlEditor.refresh();
+		}
+		
+		// Function to auto-adjust editor height based on content
+		function autoAdjustEditorHeight() {
+		  if (!sqlEditor) return;
+		  
+		  // Get the editor wrapper
+		  const wrapper = sqlEditor.getWrapperElement();
+		  
+		  // Set a reasonable min-height
+		  $(wrapper).css('min-height', '100px');
+		  
+		  // Get the content's height
+		  const contentHeight = sqlEditor.getScrollInfo().height;
+		  
+		  // Calculate new height with some padding
+		  const newHeight = Math.max(100, contentHeight + 20);
+		  
+		  // Apply the new height
+		  $(wrapper).css('height', newHeight + 'px');
+		  
+		  // Refresh to update the layout
+		  sqlEditor.refresh();
 		}
 
 		// Call this after page load with a slight delay to ensure DOM is ready
@@ -295,6 +329,7 @@
 						
 						if (sqlEditor) {
 							sqlEditor.setValue(cleanSql);
+							adjustEditorHeight(cleanSql);
 							sqlEditor.refresh();
 						} else {
 							$('#csd-sql-query').val(cleanSql);
@@ -321,24 +356,22 @@
 			});
 		});
 		
-		// Edit SQL query
+		// Update your edit SQL button handler
 		$('#csd-edit-sql').on('click', function() {
-			if (sqlEditor) {
-				sqlEditor.setOption('readOnly', false);
-			} else {
-				$('#csd-sql-query').prop('readonly', false);
-			}
+		  if (sqlEditor) {
+			sqlEditor.setOption('readOnly', false);
 			
-			// Show/hide buttons
-			$(this).hide();
-			$('#csd-run-sql, #csd-cancel-sql-edit').show();
-			
-			// Focus on editor
-			if (sqlEditor) {
-				sqlEditor.focus();
-			} else {
-				$('#csd-sql-query').focus();
-			}
+			// Force focus after a slight delay
+			setTimeout(function() {
+			  sqlEditor.focus();
+			}, 50);
+		  } else {
+			$('#csd-sql-query').prop('readonly', false).focus();
+		  }
+		  
+		  // Show/hide buttons
+		  $(this).hide();
+		  $('#csd-run-sql, #csd-cancel-sql-edit').show();
 		});
 		
 		// Cancel SQL edit
