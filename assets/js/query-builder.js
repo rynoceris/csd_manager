@@ -6,6 +6,9 @@
 
 	// Initialize everything when the document is ready
 	$(document).ready(function() {
+		// CodeMirror instance variable
+		let sqlEditor = null;
+
 		// Create a fallback for the AJAX object if needed
 		if (typeof csd_ajax === 'undefined') {
 			console.log('Creating fallback for csd_ajax');
@@ -13,6 +16,40 @@
 				ajax_url: ajaxurl || '/wp-admin/admin-ajax.php',
 				nonce: ''  // We'll need to get this from the page
 			};
+		}
+
+		// Initialize CodeMirror editor for SQL syntax highlighting
+		function initCodeMirror() {
+			const sqlTextarea = document.getElementById('csd-sql-query');
+			if (sqlTextarea && !sqlEditor) {
+				sqlEditor = CodeMirror.fromTextArea(sqlTextarea, {
+					mode: 'text/x-mysql',
+					theme: 'monokai',
+					lineNumbers: true,
+					indentWithTabs: true,
+					readOnly: true,
+					lineWrapping: true,
+					autoRefresh: true
+				});
+				
+				// Set the size and make it resizable
+				sqlEditor.setSize(null, 150);
+				
+				// Add resizable class to CodeMirror wrapper
+				$(sqlEditor.getWrapperElement()).addClass('resizable-cm');
+				
+				// Add click-to-edit functionality on the editor
+				$(sqlEditor.getWrapperElement()).on('click', function() {
+					if (sqlEditor.getOption('readOnly')) {
+						$('#csd-edit-sql').click();
+					}
+				});
+			}
+		}
+
+		// Call this after page load
+		if (typeof CodeMirror !== 'undefined') {
+			initCodeMirror();
 		}
 
 		// Tab switching
@@ -249,10 +286,18 @@
 						$('#csd-record-count').text(response.data.count);
 						
 						// Show SQL query
-						$('#csd-sql-query').val(response.data.sql);
+						if (sqlEditor) {
+							sqlEditor.setValue(formatSqlQuery(response.data.sql));
+							sqlEditor.refresh();
+						} else {
+							$('#csd-sql-query').val(formatSqlQuery(response.data.sql));
+						}
 						
 						// Show results table
 						$('#csd-query-results').html(response.data.html);
+						
+						// Initialize resizable columns
+						initializeResizableColumns();
 						
 						// Scroll to results
 						$('html, body').animate({
@@ -271,25 +316,31 @@
 		
 		// Edit SQL query
 		$('#csd-edit-sql').on('click', function() {
-			var sqlTextarea = $('#csd-sql-query');
-			
-			// Toggle readonly attribute
-			sqlTextarea.prop('readonly', false);
+			if (sqlEditor) {
+				sqlEditor.setOption('readOnly', false);
+			} else {
+				$('#csd-sql-query').prop('readonly', false);
+			}
 			
 			// Show/hide buttons
 			$(this).hide();
 			$('#csd-run-sql, #csd-cancel-sql-edit').show();
 			
-			// Focus on textarea
-			sqlTextarea.focus();
+			// Focus on editor
+			if (sqlEditor) {
+				sqlEditor.focus();
+			} else {
+				$('#csd-sql-query').focus();
+			}
 		});
 		
 		// Cancel SQL edit
 		$('#csd-cancel-sql-edit').on('click', function() {
-			var sqlTextarea = $('#csd-sql-query');
-			
-			// Toggle readonly attribute
-			sqlTextarea.prop('readonly', true);
+			if (sqlEditor) {
+				sqlEditor.setOption('readOnly', true);
+			} else {
+				$('#csd-sql-query').prop('readonly', true);
+			}
 			
 			// Show/hide buttons
 			$(this).hide();
@@ -299,7 +350,7 @@
 		
 		// Run custom SQL
 		$('#csd-run-sql').on('click', function() {
-			var sql = $('#csd-sql-query').val();
+			var sql = sqlEditor ? sqlEditor.getValue() : $('#csd-sql-query').val();
 			
 			if (!sql) {
 				alert('Please enter an SQL query.');
@@ -329,12 +380,19 @@
 						// Show results table
 						$('#csd-query-results').html(response.data.html);
 						
+						// Initialize resizable columns
+						initializeResizableColumns();
+						
 						// Restore buttons
 						$('#csd-run-sql, #csd-cancel-sql-edit').hide();
 						$('#csd-edit-sql').show();
 						
 						// Make textarea readonly again
-						$('#csd-sql-query').prop('readonly', true);
+						if (sqlEditor) {
+							sqlEditor.setOption('readOnly', true);
+						} else {
+							$('#csd-sql-query').prop('readonly', true);
+						}
 						
 						// Scroll to results
 						$('html, body').animate({
@@ -397,14 +455,20 @@
 				
 				// Clear results
 				$('#csd-record-count').text('0');
-				$('#csd-sql-query').val('');
+				
+				if (sqlEditor) {
+					sqlEditor.setValue('');
+				} else {
+					$('#csd-sql-query').val('');
+				}
+				
 				$('#csd-query-results').html('');
 			}
 		});
 		
 		// Export to CSV
 		$('#csd-export-csv').on('click', function() {
-			var sql = $('#csd-sql-query').val();
+			var sql = sqlEditor ? sqlEditor.getValue() : $('#csd-sql-query').val();
 			
 			if (!sql) {
 				alert('Please run a query first.');
@@ -610,6 +674,45 @@
 			});
 		});
 		
+		// Initialize resizable columns
+		function initializeResizableColumns() {
+			$(document).on('mousedown', '.csd-resizable-table .resize-handle', function(e) {
+				e.preventDefault();
+				
+				const th = $(this).closest('th');
+				const table = th.closest('table');
+				const columnIndex = th.index();
+				const startX = e.pageX;
+				const startWidth = th.width();
+				
+				$(this).addClass('resizing');
+				
+				const mouseMoveHandler = function(e) {
+					// Calculate width change
+					const widthChange = e.pageX - startX;
+					const newWidth = Math.max(50, startWidth + widthChange);
+					
+					// Apply new width to header and all cells in this column
+					th.width(newWidth);
+					table.find('tr').each(function() {
+						$(this).find('td').eq(columnIndex).width(newWidth);
+					});
+				};
+				
+				const mouseUpHandler = function() {
+					$(document).off('mousemove', mouseMoveHandler);
+					$(document).off('mouseup', mouseUpHandler);
+					$('.resize-handle').removeClass('resizing');
+				};
+				
+				$(document).on('mousemove', mouseMoveHandler);
+				$(document).on('mouseup', mouseUpHandler);
+			});
+		}
+		
+		// Call resizable columns initialization after page load
+		initializeResizableColumns();
+		
 		// Helper function to update condition indices
 		function updateConditionIndices(group) {
 			var groupIndex = group.data('group');
@@ -663,7 +766,7 @@
 			});
 		}
 		
-		// Format SQL query with proper indentation
+		// Format SQL query with proper indentation (fixed to remove starting blank line)
 		function formatSqlQuery(sql) {
 			if (!sql) return sql;
 			
@@ -673,64 +776,34 @@
 			// Add line breaks after these SQL keywords
 			var keywords = ['SELECT', 'FROM', 'WHERE', 'LEFT JOIN', 'INNER JOIN', 'RIGHT JOIN', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT'];
 			
-			// Replace keywords with line breaks and proper indentation
-			keywords.forEach(function(keyword) {
-				var regex = new RegExp('\\b' + keyword + '\\b', 'gi');
-				sql = sql.replace(regex, '\n' + keyword);
-			});
+			// Start with SELECT (first keyword) and don't add a newline before it
+			var formattedSql = '';
+			var parts = sql.split(/\b(SELECT|FROM|WHERE|LEFT JOIN|INNER JOIN|RIGHT JOIN|GROUP BY|ORDER BY|HAVING|LIMIT)\b/i);
+			
+			for (var i = 0; i < parts.length; i++) {
+				if (keywords.some(kw => parts[i].toUpperCase() === kw)) {
+					// It's a keyword
+					if (i > 0 || parts[i].toUpperCase() !== 'SELECT') {
+						formattedSql += '\n';
+					}
+					formattedSql += parts[i];
+				} else {
+					formattedSql += parts[i];
+				}
+			}
 			
 			// Add indentation for JOIN statements
-			sql = sql.replace(/\n(LEFT JOIN|INNER JOIN|RIGHT JOIN)/gi, '\n  $1');
+			formattedSql = formattedSql.replace(/\n(LEFT JOIN|INNER JOIN|RIGHT JOIN)/gi, '\n  $1');
 			
 			// Add indentation after WHERE for conditions
-			sql = sql.replace(/\nWHERE\s+(.+?)(\n|$)/gi, '\nWHERE\n  $1$2');
+			formattedSql = formattedSql.replace(/\nWHERE\s+(.+?)(\n|$)/gi, '\nWHERE\n  $1$2');
 			
 			// Add line breaks for AND and OR
-			sql = sql.replace(/\s+(AND|OR)\s+/gi, '\n  $1 ');
+			formattedSql = formattedSql.replace(/\s+(AND|OR)\s+/gi, '\n  $1 ');
 			
-			return sql;
+			return formattedSql;
 		}
-		
-		// Initialize SQL textarea click handling
-		function initSqlTextareaHandling() {
-			var sqlTextarea = $('#csd-sql-query');
-			var editBtn = $('#csd-edit-sql');
-			var runBtn = $('#csd-run-sql');
-			var cancelBtn = $('#csd-cancel-sql-edit');
-			
-			// Format the SQL query initially
-			sqlTextarea.val(formatSqlQuery(sqlTextarea.val()));
-			
-			// Enable direct editing when clicked
-			sqlTextarea.on('click', function() {
-				if (sqlTextarea.prop('readonly')) {
-					sqlTextarea.prop('readonly', false);
-					editBtn.hide();
-					runBtn.show();
-					cancelBtn.show();
-				}
-			});
-			
-			// Handle cancel button
-			cancelBtn.on('click', function() {
-				sqlTextarea.prop('readonly', true);
-				runBtn.hide();
-				cancelBtn.hide();
-				editBtn.show();
-			});
-		}
-		
-		// Format SQL when displaying results
-		$(document).on('ajaxSuccess', function(event, xhr, settings) {
-			if (settings.data && settings.data.indexOf('csd_run_custom_query') > -1) {
-				// Format the SQL in the textarea after query runs
-				setTimeout(function() {
-					var sqlTextarea = $('#csd-sql-query');
-					sqlTextarea.val(formatSqlQuery(sqlTextarea.val()));
-				}, 100);
-			}
-		});
-		
+
 		// Fix display text for operators with quotes
 		$('.csd-condition-operator option').each(function() {
 			var value = $(this).val();
@@ -741,7 +814,20 @@
 			}
 		});
 		
-		initSqlTextareaHandling();
-		
+		// Add CSS for making CodeMirror resizable
+		$('<style>')
+			.prop('type', 'text/css')
+			.html(`
+				.resizable-cm {
+					resize: vertical;
+					overflow: auto !important;
+					min-height: 150px;
+				}
+				.CodeMirror {
+					border: 1px solid #ddd;
+					height: auto;
+				}
+			`)
+			.appendTo('head');
 	});
 })(jQuery);
