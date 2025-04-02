@@ -837,13 +837,69 @@ class CSD_Query_Builder {
 			.CodeMirror:hover .CodeMirror-scrollbar-filler {
 			  background-color: #ddd;
 			}
+			
+			.csd-pagination {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				margin-top: 20px;
+				margin-bottom: 20px;
+			}
+			
+			.csd-pagination-counts {
+				color: #666;
+			}
+			
+			.csd-pagination-links {
+				display: flex;
+				align-items: center;
+				flex-wrap: wrap;
+			}
+			
+			.csd-pagination-links a, 
+			.csd-pagination-links span.csd-page-number {
+				margin: 0 2px;
+			}
+			
+			.csd-pagination-dots {
+				margin: 0 5px;
+			}
+			
+			.csd-per-page-selector {
+				margin-left: 15px;
+				display: flex;
+				align-items: center;
+			}
+			
+			.csd-per-page-selector label {
+				margin-right: 5px;
+			}
+			
+			#csd-per-page {
+				min-width: 70px;
+			}
+			
+			@media screen and (max-width: 782px) {
+				.csd-pagination {
+					flex-direction: column;
+					align-items: flex-start;
+				}
+				
+				.csd-pagination-counts {
+					margin-bottom: 10px;
+				}
+				
+				.csd-per-page-selector {
+					margin-left: 0;
+					margin-top: 10px;
+				}
+			}
 		</style>
 		<?php
 	}
 	
 	/**
 	 * AJAX handler for running a custom query
-	 * This should replace the existing ajax_run_custom_query method
 	 */
 	public function ajax_run_custom_query() {
 		// Check nonce
@@ -866,6 +922,10 @@ class CSD_Query_Builder {
 		// Parse form data
 		parse_str($_POST['form_data'], $form_data);
 		
+		// Get pagination parameters
+		$page = isset($_POST['page']) ? intval($_POST['page']) : 1;
+		$per_page = isset($_POST['per_page']) ? intval($_POST['per_page']) : 25;
+		
 		// Validate fields
 		if (!isset($form_data['fields']) || !is_array($form_data['fields']) || empty($form_data['fields'])) {
 			wp_send_json_error(array('message' => __('Please select at least one field to display.', 'csd-manager')));
@@ -873,20 +933,33 @@ class CSD_Query_Builder {
 		}
 		
 		try {
-			// Build SQL query
-			$sql = $this->build_sql_query($form_data);
+			// Build SQL query without pagination to get total count
+			$count_sql = $this->build_count_sql_query($form_data);
 			
-			// Clean the SQL query - fix any potential issues
+			// Build paginated SQL query for actual data
+			$sql = $this->build_sql_query($form_data, true, $page, $per_page);
+			
+			// Clean the SQL queries
+			$count_sql = $this->clean_sql_query($count_sql);
 			$sql = $this->clean_sql_query($sql);
 			
-			// Run the query
+			// Get total count
+			$total_count = $this->get_query_count($count_sql);
+			
+			// Run the paginated query
 			$results = $this->execute_query($sql);
 			
-			// Generate results HTML
-			$html = $this->generate_results_html($results);
+			// Generate results HTML with pagination
+			$html = $this->generate_results_html($results, $page, $per_page, $total_count);
+			
+			// Calculate total pages
+			$total_pages = ceil($total_count / $per_page);
 			
 			wp_send_json_success(array(
-				'count' => count($results),
+				'count' => $total_count,
+				'current_page' => $page,
+				'per_page' => $per_page,
+				'total_pages' => $total_pages,
 				'sql' => $sql,
 				'html' => $html
 			));
@@ -896,11 +969,238 @@ class CSD_Query_Builder {
 	}
 	
 	/**
+	 * Build SQL query for counting total results
+	 * 
+	 * @param array $form_data Form data
+	 * @return string SQL count query
+	 */
+	private function build_count_sql_query($form_data) {
+		// Determine which tables are needed
+		$tables_needed = array();
+		foreach ($form_data['fields'] as $field) {
+			list($table, $field_name) = explode('.', $field);
+			$tables_needed[$table] = true;
+		}
+		
+		// Add tables needed for conditions
+		if (isset($form_data['conditions']) && is_array($form_data['conditions'])) {
+			foreach ($form_data['conditions'] as $group) {
+				if (is_array($group)) {
+					foreach ($group as $condition) {
+						if (!empty($condition['field'])) {
+							list($table, $field_name) = explode('.', $condition['field']);
+							$tables_needed[$table] = true;
+						}
+					}
+				}
+			}
+		}
+		
+		// Create COUNT query
+		$select_clause = 'SELECT COUNT(*) as total_count';
+		
+		// Create FROM and JOIN clauses
+		$join_type = isset($form_data['join_type']) ? $form_data['join_type'] : 'LEFT JOIN';
+		$tables_list = array_keys($tables_needed);
+		
+		// Start with the first table
+		$from_clause = 'FROM ' . $this->tables_config[$tables_list[0]]['table'];
+		
+		// Add JOINs for additional tables
+		$join_clauses = array();
+		if (count($tables_list) > 1) {
+			// If we have both schools and staff tables, use school_staff to join them
+			if (isset($tables_needed['schools']) && isset($tables_needed['staff'])) {
+				$tables_needed['school_staff'] = true;
+				
+				if ($tables_list[0] === 'schools') {
+					$join_clauses[] = $join_type . ' ' . $this->tables_config['school_staff']['table'] . ' ON ' . 
+									  $this->tables_config['schools']['table'] . '.id = ' . 
+									  $this->tables_config['school_staff']['table'] . '.school_id';
+					
+					$join_clauses[] = $join_type . ' ' . $this->tables_config['staff']['table'] . ' ON ' . 
+									  $this->tables_config['school_staff']['table'] . '.staff_id = ' . 
+									  $this->tables_config['staff']['table'] . '.id';
+				} else {
+					$join_clauses[] = $join_type . ' ' . $this->tables_config['school_staff']['table'] . ' ON ' . 
+									  $this->tables_config['staff']['table'] . '.id = ' . 
+									  $this->tables_config['school_staff']['table'] . '.staff_id';
+					
+					$join_clauses[] = $join_type . ' ' . $this->tables_config['schools']['table'] . ' ON ' . 
+									  $this->tables_config['school_staff']['table'] . '.school_id = ' . 
+									  $this->tables_config['schools']['table'] . '.id';
+				}
+			} 
+			// Handle school_staff table if it's explicitly selected
+			else if (isset($tables_needed['school_staff'])) {
+				if (isset($tables_needed['schools'])) {
+					$join_clauses[] = $join_type . ' ' . $this->tables_config['school_staff']['table'] . ' ON ' . 
+									  $this->tables_config['schools']['table'] . '.id = ' . 
+									  $this->tables_config['school_staff']['table'] . '.school_id';
+				} else if (isset($tables_needed['staff'])) {
+					$join_clauses[] = $join_type . ' ' . $this->tables_config['school_staff']['table'] . ' ON ' . 
+									  $this->tables_config['staff']['table'] . '.id = ' . 
+									  $this->tables_config['school_staff']['table'] . '.staff_id';
+				}
+			}
+		}
+		
+		// Combine JOIN clauses
+		$join_clause = implode(' ', $join_clauses);
+		
+		// Create WHERE clause - reuse the same logic as build_sql_query
+		$where_clause = '';
+		if (isset($form_data['conditions']) && is_array($form_data['conditions'])) {
+			$condition_groups = array();
+			
+			foreach ($form_data['conditions'] as $group) {
+				if (is_array($group)) {
+					$conditions = array();
+					
+					foreach ($group as $index => $condition) {
+						// Skip empty conditions
+						if (empty($condition['field']) || empty($condition['operator'])) {
+							continue;
+						}
+						
+						// Parse field
+						list($table, $field_name) = explode('.', $condition['field']);
+						$field = $this->tables_config[$table]['table'] . '.' . $field_name;
+						
+						// Handle different operators
+						$where_condition = '';
+						
+						switch ($condition['operator']) {
+							case '=':
+							case '!=':
+							case '>':
+							case '>=':
+							case '<':
+							case '<=':
+								$where_condition = $field . ' ' . $condition['operator'] . ' ' . $this->prepare_value($condition['value']);
+								break;
+								
+							case 'LIKE':
+								$where_condition = $field . ' LIKE ' . $this->prepare_value($condition['value']);
+								break;
+								
+							case 'LIKE %...%':
+								$where_condition = $field . ' LIKE ' . $this->prepare_value('%' . $condition['value'] . '%');
+								break;
+								
+							case 'NOT LIKE':
+								$where_condition = $field . ' NOT LIKE ' . $this->prepare_value($condition['value']);
+								break;
+								
+							case 'NOT LIKE %...%':
+								$where_condition = $field . ' NOT LIKE ' . $this->prepare_value('%' . $condition['value'] . '%');
+								break;
+								
+							case 'REGEXP':
+								$where_condition = $field . ' REGEXP ' . $this->prepare_value($condition['value']);
+								break;
+								
+							case 'REGEXP ^...$':
+								$where_condition = $field . ' REGEXP ' . $this->prepare_value('^' . $condition['value'] . '$');
+								break;
+								
+							case 'NOT REGEXP':
+								$where_condition = $field . ' NOT REGEXP ' . $this->prepare_value($condition['value']);
+								break;
+								
+							case "= ''":
+								$where_condition = '(' . $field . ' = \'\' OR ' . $field . ' IS NULL)';
+								break;
+								
+							case "!= ''":
+								$where_condition = '(' . $field . ' != \'\' AND ' . $field . ' IS NOT NULL)';
+								break;
+								
+							case 'IN':
+								$values = array_map('trim', explode(',', $condition['value']));
+								$prepared_values = array();
+								
+								foreach ($values as $value) {
+									$prepared_values[] = $this->prepare_value($value);
+								}
+								
+								$where_condition = $field . ' IN (' . implode(', ', $prepared_values) . ')';
+								break;
+								
+							case 'NOT IN':
+								$values = array_map('trim', explode(',', $condition['value']));
+								$prepared_values = array();
+								
+								foreach ($values as $value) {
+									$prepared_values[] = $this->prepare_value($value);
+								}
+								
+								$where_condition = $field . ' NOT IN (' . implode(', ', $prepared_values) . ')';
+								break;
+								
+							case 'BETWEEN':
+								$where_condition = $field . ' BETWEEN ' . $this->prepare_value($condition['value']) . ' AND ' . $this->prepare_value($condition['value2']);
+								break;
+								
+							case 'NOT BETWEEN':
+								$where_condition = $field . ' NOT BETWEEN ' . $this->prepare_value($condition['value']) . ' AND ' . $this->prepare_value($condition['value2']);
+								break;
+						}
+						
+						if (!empty($where_condition)) {
+							if ($index < count($group) - 1 && isset($condition['relation'])) {
+								$where_condition .= ' ' . $condition['relation'] . ' ';
+							}
+							
+							$conditions[] = $where_condition;
+						}
+					}
+					
+					if (!empty($conditions)) {
+						$condition_groups[] = '(' . implode('', $conditions) . ')';
+					}
+				}
+			}
+			
+			if (!empty($condition_groups)) {
+				$where_clause = 'WHERE ' . implode(' OR ', $condition_groups);
+			}
+		}
+		
+		// Combine all clauses for the count query
+		$sql = $select_clause . ' ' . $from_clause . ' ' . $join_clause;
+		
+		if (!empty($where_clause)) {
+			$sql .= ' ' . $where_clause;
+		}
+		
+		return $sql;
+	}
+	
+	/**
+	 * Get total count from a COUNT query
+	 * 
+	 * @param string $sql SQL count query
+	 * @return int Total count
+	 */
+	private function get_query_count($sql) {
+		$wpdb = csd_db_connection();
+		$result = $wpdb->get_row($sql);
+		
+		if ($wpdb->last_error) {
+			throw new Exception('Database error: ' . $wpdb->last_error);
+		}
+		
+		return isset($result->total_count) ? intval($result->total_count) : 0;
+	}
+	
+	/**
 	 * Run a custom SQL query
-	 * This should replace the existing run_custom_sql_query method
 	 */
 	private function run_custom_sql_query() {
 		$sql = trim($_POST['custom_sql']);
+		$page = isset($_POST['page']) ? intval($_POST['page']) : 1;
+		$per_page = isset($_POST['per_page']) ? intval($_POST['per_page']) : 25;
 		
 		// Basic validation
 		if (empty($sql)) {
@@ -918,14 +1218,41 @@ class CSD_Query_Builder {
 			// Clean the SQL query
 			$sql = $this->clean_sql_query($sql);
 			
+			// Create a count query
+			$count_sql = preg_replace('/^\s*SELECT\s+.+?\s+FROM\s+/is', 'SELECT COUNT(*) as total_count FROM ', $sql);
+			
+			// Remove any ORDER BY, LIMIT, and GROUP BY clauses from the count query
+			$count_sql = preg_replace('/\s+ORDER\s+BY\s+.+$/is', '', $count_sql);
+			$count_sql = preg_replace('/\s+LIMIT\s+\d+(?:\s*,\s*\d+)?$/is', '', $count_sql);
+			$count_sql = preg_replace('/\s+GROUP\s+BY\s+.+$/is', '', $count_sql);
+			
+			// Get total count
+			$total_count = $this->get_query_count($count_sql);
+			
+			// Add pagination to the query if it doesn't already have LIMIT
+			if (!preg_match('/\s+LIMIT\s+\d+(?:\s*,\s*\d+)?$/i', $sql)) {
+				// Ensure there's an ORDER BY clause for consistent pagination
+				if (!preg_match('/\s+ORDER\s+BY\s+/i', $sql)) {
+					// If there's no ORDER BY, add a default one on the first column
+					$sql .= ' ORDER BY 1';
+				}
+				
+				// Add LIMIT/OFFSET
+				$offset = ($page - 1) * $per_page;
+				$sql .= ' LIMIT ' . intval($per_page) . ' OFFSET ' . intval($offset);
+			}
+			
 			// Run the query
 			$results = $this->execute_query($sql);
 			
 			// Generate results HTML
-			$html = $this->generate_results_html($results);
+			$html = $this->generate_results_html($results, $page, $per_page, $total_count);
 			
 			wp_send_json_success(array(
-				'count' => count($results),
+				'count' => $total_count,
+				'current_page' => $page,
+				'per_page' => $per_page,
+				'total_pages' => ceil($total_count / $per_page),
 				'sql' => $sql,
 				'html' => $html
 			));
@@ -963,9 +1290,12 @@ class CSD_Query_Builder {
 	 * Build SQL query from form data
 	 * 
 	 * @param array $form_data Form data
+	 * @param bool $add_pagination Whether to add pagination
+	 * @param int $page Current page
+	 * @param int $per_page Records per page
 	 * @return string SQL query
 	 */
-	private function build_sql_query($form_data) {
+	private function build_sql_query($form_data, $add_pagination = false, $page = 1, $per_page = 25) {
 		// Extract selected fields
 		$fields = $form_data['fields'];
 		
@@ -1167,38 +1497,43 @@ class CSD_Query_Builder {
 			}
 		}
 		
-		// Create ORDER BY clause
-		$order_clause = '';
-		if (!empty($form_data['order_by'])) {
-			list($table, $field_name) = explode('.', $form_data['order_by']);
-			$order_field = $this->tables_config[$table]['table'] . '.' . $field_name;
-			$order_direction = !empty($form_data['order_dir']) ? $form_data['order_dir'] : 'ASC';
-			
-			$order_clause = 'ORDER BY ' . $order_field . ' ' . $order_direction;
-		}
-		
-		// Create LIMIT clause
-		$limit_clause = '';
-		if (!empty($form_data['limit'])) {
-			$limit = intval($form_data['limit']);
-			if ($limit > 0) {
-				$limit_clause = 'LIMIT ' . $limit;
-			}
-		}
-		
-		// Combine all clauses
+		// Combine the query base
 		$sql = $select_clause . ' ' . $from_clause . ' ' . $join_clause;
 		
 		if (!empty($where_clause)) {
 			$sql .= ' ' . $where_clause;
 		}
 		
-		if (!empty($order_clause)) {
-			$sql .= ' ' . $order_clause;
+		// Add ORDER BY clause
+		$order_clause = '';
+		if (!empty($form_data['order_by'])) {
+			list($table, $field_name) = explode('.', $form_data['order_by']);
+			$order_field = $this->tables_config[$table]['table'] . '.' . $field_name;
+			$order_direction = !empty($form_data['order_dir']) ? $form_data['order_dir'] : 'ASC';
+			
+			$order_clause = ' ORDER BY ' . $order_field . ' ' . $order_direction;
+			$sql .= $order_clause;
+		} else if ($add_pagination) {
+			// Default ordering if none specified
+			// Use the first field from the SELECT clause as default
+			list($table, $field_name) = explode('.', $form_data['fields'][0]);
+			$default_order = ' ORDER BY ' . $this->tables_config[$table]['table'] . '.' . $field_name . ' ASC';
+			$sql .= $default_order;
 		}
 		
-		if (!empty($limit_clause)) {
-			$sql .= ' ' . $limit_clause;
+		// Add pagination if requested
+		if ($add_pagination) {
+			// Add LIMIT and OFFSET for pagination
+			$offset = ($page - 1) * $per_page;
+			$sql .= ' LIMIT ' . intval($per_page) . ' OFFSET ' . intval($offset);
+		} else {
+			// Non-paginated query - use the original limit setting if present
+			if (!empty($form_data['limit'])) {
+				$limit = intval($form_data['limit']);
+				if ($limit > 0) {
+					$sql .= ' LIMIT ' . $limit;
+				}
+			}
 		}
 		
 		return $sql;
@@ -1259,12 +1594,15 @@ class CSD_Query_Builder {
 	}
 	
 	/**
-	 * Generate HTML for query results
+	 * Generate HTML for query results with pagination
 	 * 
 	 * @param array $results Query results
+	 * @param int $current_page Current page
+	 * @param int $per_page Records per page
+	 * @param int $total_count Total records count
 	 * @return string HTML
 	 */
-	private function generate_results_html($results) {
+	private function generate_results_html($results, $current_page, $per_page, $total_count) {
 		$html = '';
 		
 		if (empty($results)) {
@@ -1298,9 +1636,75 @@ class CSD_Query_Builder {
 				$html .= '</tr>';
 			}
 			$html .= '</tbody>';
-			
 			$html .= '</table>';
 			$html .= '</div>';
+			
+			// Add pagination controls
+			$total_pages = ceil($total_count / $per_page);
+			if ($total_pages > 1) {
+				$html .= '<div class="csd-pagination">';
+				
+				// Showing records info
+				$start = (($current_page - 1) * $per_page) + 1;
+				$end = min($start + count($results) - 1, $total_count);
+				
+				$html .= '<div class="csd-pagination-counts">';
+				$html .= '<span class="csd-showing-records">' . sprintf(__('Showing %d to %d of %d records', 'csd-manager'), $start, $end, $total_count) . '</span>';
+				$html .= '</div>';
+				
+				// Page links
+				$html .= '<div class="csd-pagination-links">';
+				
+				// Previous button
+				if ($current_page > 1) {
+					$html .= '<a href="#" class="csd-page-number button" data-page="' . ($current_page - 1) . '">&laquo; ' . __('Previous', 'csd-manager') . '</a> ';
+				}
+				
+				// Page numbers
+				$start_page = max(1, $current_page - 2);
+				$end_page = min($total_pages, $start_page + 4);
+				
+				if ($start_page > 1) {
+					$html .= '<a href="#" class="csd-page-number button" data-page="1">1</a> ';
+					if ($start_page > 2) {
+						$html .= '<span class="csd-pagination-dots">...</span> ';
+					}
+				}
+				
+				for ($i = $start_page; $i <= $end_page; $i++) {
+					if ($i === $current_page) {
+						$html .= '<span class="csd-page-number button button-primary">' . $i . '</span> ';
+					} else {
+						$html .= '<a href="#" class="csd-page-number button" data-page="' . $i . '">' . $i . '</a> ';
+					}
+				}
+				
+				if ($end_page < $total_pages) {
+					if ($end_page < $total_pages - 1) {
+						$html .= '<span class="csd-pagination-dots">...</span> ';
+					}
+					$html .= '<a href="#" class="csd-page-number button" data-page="' . $total_pages . '">' . $total_pages . '</a> ';
+				}
+				
+				// Next button
+				if ($current_page < $total_pages) {
+					$html .= '<a href="#" class="csd-page-number button" data-page="' . ($current_page + 1) . '">' . __('Next', 'csd-manager') . ' &raquo;</a>';
+				}
+				
+				$html .= '</div>'; // End pagination links
+				
+				// Records per page selector
+				$html .= '<div class="csd-per-page-selector">';
+				$html .= '<label for="csd-per-page">' . __('Records per page:', 'csd-manager') . '</label> ';
+				$html .= '<select id="csd-per-page">';
+				foreach (array(25, 50, 100, 200) as $option) {
+					$html .= '<option value="' . $option . '"' . ($per_page == $option ? ' selected' : '') . '>' . $option . '</option>';
+				}
+				$html .= '</select>';
+				$html .= '</div>';
+				
+				$html .= '</div>'; // End pagination container
+			}
 		}
 		
 		return $html;
