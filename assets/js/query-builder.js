@@ -772,9 +772,63 @@
 							// Clear container
 							$conditionsContainer.empty();
 							
+							// First, cache the original options to ensure they're available
+							var fieldOptionsHtml = '';
+							var operatorOptionsHtml = '';
+							var relationOptionsHtml = '';
+							
+							// Get option HTML from page elements before building new conditions
+							if ($('.csd-condition-field:first').length) {
+								fieldOptionsHtml = $('.csd-condition-field:first').html();
+							} else {
+								// Fallback - recreate field options if none found
+								fieldOptionsHtml = '<option value="">-- Select Field --</option>';
+								// Loop through tables_config to add options (You'll need to make sure this data is available)
+								$('.csd-condition-field:first option').each(function() {
+									fieldOptionsHtml += '<option value="' + $(this).val() + '" data-type="' + 
+										$(this).attr('data-type') + '">' + $(this).text() + '</option>';
+								});
+							}
+							
+							if ($('.csd-condition-operator:first').length) {
+								operatorOptionsHtml = $('.csd-condition-operator:first').html();
+							} else {
+								// Fallback operator options
+								operatorOptionsHtml = 
+									'<option value="">-- Select Operator --</option>' +
+									'<option value="=">=</option>' +
+									'<option value="!=">!=</option>' +
+									'<option value="LIKE">LIKE</option>' +
+									'<option value="LIKE %...%">LIKE %...% (contains)</option>' +
+									'<option value="NOT LIKE">NOT LIKE</option>' +
+									'<option value="NOT LIKE %...%">NOT LIKE %...% (not contains)</option>' +
+									'<option value="REGEXP">REGEXP</option>' +
+									'<option value="REGEXP ^...$">REGEXP ^...$ (exact match)</option>' +
+									'<option value="NOT REGEXP">NOT REGEXP</option>' +
+									'<option value="= \'\'">= \'\' (empty)</option>' +
+									'<option value="!= \'\'">!= \'\' (not empty)</option>' +
+									'<option value="IN">IN (...)</option>' +
+									'<option value="NOT IN">NOT IN (...)</option>' +
+									'<option value="BETWEEN">BETWEEN</option>' +
+									'<option value="NOT BETWEEN">NOT BETWEEN</option>' +
+									'<option value=">">></option>' +
+									'<option value=">=">>=</option>' +
+									'<option value="<"><</option>' +
+									'<option value="<="><=</option>';
+							}
+							
+							if ($('.csd-condition-relation:first').length) {
+								relationOptionsHtml = $('.csd-condition-relation:first').html();
+							} else {
+								// Fallback relation options
+								relationOptionsHtml = 
+									'<option value="AND">AND</option>' +
+									'<option value="OR">OR</option>';
+							}
+							
 							// Process each condition group from the saved data
 							$.each(queryData.conditions, function(groupIndex, group) {
-								// Create a new condition group from scratch
+								// Create a new condition group
 								var groupHtml = '<div class="csd-condition-group" data-group="' + groupIndex + '">' +
 									'<div class="csd-condition-group-header">' +
 									'<h4>Condition Group ' + (groupIndex + 1) + '</h4>' +
@@ -793,14 +847,14 @@
 								
 								// Add each condition to this group
 								$.each(group, function(condIndex, cond) {
-									// Build condition HTML
+									// Build condition HTML with the cached options
 									var condHtml = '<div class="csd-condition" data-index="' + condIndex + '">' +
 										'<select class="csd-condition-field" name="conditions[' + groupIndex + '][' + condIndex + '][field]">' +
-										$('.csd-condition-field:first').html() + // Copy options from any existing field select
+										fieldOptionsHtml +
 										'</select>' +
 										
 										'<select class="csd-condition-operator" name="conditions[' + groupIndex + '][' + condIndex + '][operator]">' +
-										$('.csd-condition-operator:first').html() + // Copy options from any existing operator select
+										operatorOptionsHtml +
 										'</select>' +
 										
 										'<div class="csd-condition-value-container">' +
@@ -820,8 +874,7 @@
 										'<select class="csd-condition-relation" name="conditions[' + groupIndex + '][' + condIndex + '][relation]" style="' + 
 										(condIndex === group.length - 1 ? 'display:none;' : '') + 
 										'">' +
-										'<option value="AND">AND</option>' +
-										'<option value="OR">OR</option>' +
+										relationOptionsHtml +
 										'</select>' +
 										
 										'<button type="button" class="csd-remove-condition button" style="' + 
@@ -834,9 +887,9 @@
 									var $condition = $(condHtml);
 									$group.find('.csd-conditions').append($condition);
 									
-									// Set values for select elements (after they're added to the DOM)
+									// Set values for select elements
 									$condition.find('.csd-condition-field').val(cond.field);
-									$condition.find('.csd-condition-operator').val(cond.operator);
+									$condition.find('.csd-condition-operator').val(cond.operator).trigger('change');
 									$condition.find('.csd-condition-value').val(cond.value);
 									
 									if (cond.value2) {
@@ -845,6 +898,17 @@
 									
 									if (cond.relation) {
 										$condition.find('.csd-condition-relation').val(cond.relation);
+									}
+							
+									// Handle visibility based on operator
+									var operator = cond.operator;
+									if (operator === 'BETWEEN' || operator === 'NOT BETWEEN') {
+										$condition.find('.csd-between-values').show();
+									} else if (operator === "= ''" || operator === "!= ''") {
+										$condition.find('.csd-condition-value').hide();
+									} else {
+										$condition.find('.csd-between-values').hide();
+										$condition.find('.csd-condition-value').show();
 									}
 								});
 							});
