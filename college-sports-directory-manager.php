@@ -3,7 +3,7 @@
  * Plugin Name: College Sports Directory Manager
  * Plugin URI: https://ryanours.com
  * Description: Manage college and university staff members and school information with search, sort, import, and shortcode capabilities.
- * Version: 1.1
+ * Version: 1.2
  * Author: Ryan Ours
  * Author URI: https://ryanours.com
  * Text Domain: csd-manager
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('CSD_MANAGER_VERSION', '1.1');
+define('CSD_MANAGER_VERSION', '1.2');
 define('CSD_MANAGER_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CSD_MANAGER_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -28,6 +28,7 @@ require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/shortcodes.php');
 require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/functions.php');
 require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/database-connection.php');
 require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
+require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/snapshot-tool.php');
 
 /**
  * Add this standalone activation function
@@ -230,6 +231,14 @@ function csd_ajax_export_query_results_wrapper() {
 	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/query-builder.php');
 	$query_builder = new CSD_Query_Builder();
 	$query_builder->ajax_export_query_results();
+}
+
+// Snapshot tool AJAX handler
+add_action('wp_ajax_csd_fetch_snapshot', 'csd_ajax_fetch_snapshot_wrapper');
+function csd_ajax_fetch_snapshot_wrapper() {
+	require_once(CSD_MANAGER_PLUGIN_DIR . 'includes/snapshot-tool.php');
+	$snapshot_tool = new CSD_Snapshot_Tool();
+	$snapshot_tool->ajax_fetch_snapshot();
 }
 
 /**
