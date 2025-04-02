@@ -783,10 +783,40 @@
 							} else {
 								// Fallback - recreate field options if none found
 								fieldOptionsHtml = '<option value="">-- Select Field --</option>';
-								// Loop through tables_config to add options (You'll need to make sure this data is available)
-								$('.csd-condition-field:first option').each(function() {
-									fieldOptionsHtml += '<option value="' + $(this).val() + '" data-type="' + 
-										$(this).attr('data-type') + '">' + $(this).text() + '</option>';
+								
+								// Dynamically generate field options based on the tables configuration
+								var tables = ['schools', 'staff', 'school_staff']; // Match your backend tables
+								tables.forEach(function(table) {
+									var tableName = table === 'schools' ? 'Schools' : 
+													table === 'staff' ? 'Staff' : 
+													'School Staff Relations';
+									
+									fieldOptionsHtml += '<optgroup label="' + tableName + '">';
+									
+									// These fields should match exactly what's in your backend configuration
+									var fields = {
+										'schools': [
+											'id', 'school_name', 'city', 'state', 'street_address_line_1', 
+											'street_address_line_2', 'zipcode', 'country', 'school_divisions', 
+											'school_conferences', 'school_type', 'mascot'
+										],
+										'staff': [
+											'id', 'full_name', 'title', 'sport_department', 
+											'email', 'phone'
+										],
+										'school_staff': [
+											'id', 'school_id', 'staff_id', 'date_created'
+										]
+									};
+									
+									fields[table].forEach(function(field) {
+										// Create an option with the fully qualified field name
+										fieldOptionsHtml += '<option value="' + table + '.' + field + '">' + 
+															 field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + 
+															 '</option>';
+									});
+									
+									fieldOptionsHtml += '</optgroup>';
 								});
 							}
 							
