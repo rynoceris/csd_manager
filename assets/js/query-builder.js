@@ -406,14 +406,25 @@
 						
 						// Show SQL query
 						var cleanSql = formatSqlQuery(response.data.sql);
+						// Ensure there are no leading newlines
+						cleanSql = cleanSql.replace(/^\n+/, '');
+						
 						if (sqlEditor) {
 							// Reset manual resize flag when setting new content
 							const wrapper = sqlEditor.getWrapperElement();
 							$(wrapper).data('manually-resized', false);
 							$(wrapper).data('original-height', null);
 							
+							// Clear editor completely before setting new content
+							sqlEditor.setValue("");
+							sqlEditor.clearHistory();
+							
+							// Now set the cleaned SQL
 							sqlEditor.setValue(cleanSql);
 							sqlEditor.refresh();
+							
+							// Ensure cursor is at start
+							sqlEditor.setCursor(0, 0);
 							
 							// Auto-adjust height based on new content
 							autoAdjustEditorHeight();
