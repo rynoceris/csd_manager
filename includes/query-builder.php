@@ -1735,8 +1735,13 @@ class CSD_Query_Builder {
 			}
 		}
 		
-		// Format email
+		// Format email - new condition for @placeholder emails
 		if (strpos($key, 'email') !== false) {
+			// Check if the email contains @placeholder and return blank if true
+			if (strpos($value, '@placeholder') !== false) {
+				return '&mdash;';
+			}
+			
 			if (filter_var($value, FILTER_VALIDATE_EMAIL)) {
 				return '<a href="mailto:' . esc_attr($value) . '">' . esc_html($value) . '</a>';
 			}
@@ -1982,6 +1987,16 @@ class CSD_Query_Builder {
 			
 			if (empty($results)) {
 				wp_die(__('No results to export.', 'csd-manager'));
+			}
+			
+			// Sanitize @placeholder emails
+			foreach ($results as &$row) {
+				foreach ($row as $key => $value) {
+					// Check for email columns and @placeholder values
+					if (strpos($key, 'email') !== false && strpos($value, '@placeholder') !== false) {
+						$row[$key] = ''; // Replace with empty string
+					}
+				}
 			}
 			
 			// Set filename
