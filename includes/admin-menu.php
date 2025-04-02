@@ -88,6 +88,16 @@ class CSD_Admin_Menu {
 			'csd-query-builder',
 			array(new CSD_Query_Builder(), 'render_page')
 		);
+		
+		// Add snapshot tool submenu
+		add_submenu_page(
+			'csd-manager',
+			__('Snapshot Tool', 'csd-manager'),
+			__('Snapshot Tool', 'csd-manager'),
+			$capability,
+			'csd-snapshot-tool',
+			array(new CSD_Snapshot_Tool(), 'render_page')
+		);
 	}
 	
 	/**
