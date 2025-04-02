@@ -6,6 +6,9 @@
 
 	// Initialize everything when the document is ready
 	$(document).ready(function() {
+		var currentPage = 1;
+		var resultsPerPage = 25;
+		
 		// CodeMirror instance variable
 		let sqlEditor = null;
 
@@ -349,7 +352,7 @@
 			});
 		});
 		
-		// Run query
+		// Modify the form submit handler to include pagination
 		$('#csd-query-builder-form').on('submit', function(e) {
 			e.preventDefault();
 			
@@ -362,6 +365,16 @@
 			
 			var formData = $(this).serialize();
 			
+			// Reset to first page when submitting a new query
+			currentPage = 1;
+			resultsPerPage = parseInt($('#csd-per-page').val() || 25);
+			
+			// Run the query with pagination
+			runQuery(formData, currentPage, resultsPerPage);
+		});
+		
+		// Add a function to run the query with pagination
+		function runQuery(formData, page, perPage) {
 			// Call AJAX to run query
 			$.ajax({
 				url: csd_ajax.ajax_url,
@@ -369,6 +382,8 @@
 				data: {
 					action: 'csd_run_custom_query',
 					form_data: formData,
+					page: page,
+					per_page: perPage,
 					nonce: csd_ajax.nonce
 				},
 				beforeSend: function() {
@@ -379,32 +394,37 @@
 					$('#csd-run-query').prop('disabled', false).text('Run Query');
 					
 					if (response.success) {
+						// Store the form data for pagination use
+						$('#csd-query-results').data('form-data', formData);
+						
+						// Update currentPage and resultsPerPage from response
+						currentPage = response.data.current_page;
+						resultsPerPage = response.data.per_page;
+						
 						// Update record count
 						$('#csd-record-count').text(response.data.count);
 						
-						// Show SQL query - clean up and format SQL before displaying
+						// Show SQL query
 						var cleanSql = formatSqlQuery(response.data.sql);
-						
-						// In the run query AJAX success callback:
 						if (sqlEditor) {
-						  // Reset manual resize flag when setting new content
-						  const wrapper = sqlEditor.getWrapperElement();
-						  $(wrapper).data('manually-resized', false);
-						  $(wrapper).data('original-height', null);
-						  
-						  sqlEditor.setValue(cleanSql);
-						  sqlEditor.refresh();
-						  
-						  // Auto-adjust height based on new content
-						  autoAdjustEditorHeight();
-						  
-						  // Setup manual resize tracking again
-						  setupManualResize();
+							// Reset manual resize flag when setting new content
+							const wrapper = sqlEditor.getWrapperElement();
+							$(wrapper).data('manually-resized', false);
+							$(wrapper).data('original-height', null);
+							
+							sqlEditor.setValue(cleanSql);
+							sqlEditor.refresh();
+							
+							// Auto-adjust height based on new content
+							autoAdjustEditorHeight();
+							
+							// Setup manual resize tracking again
+							setupManualResize();
 						} else {
-						  $('#csd-sql-query').val(cleanSql);
+							$('#csd-sql-query').val(cleanSql);
 						}
 						
-						// Show results table
+						// Show results table with pagination
 						$('#csd-query-results').html(response.data.html);
 						
 						// Initialize resizable columns
@@ -423,6 +443,29 @@
 					$('#csd-query-results').html('<div class="notice notice-error"><p>Error running query.</p></div>');
 				}
 			});
+		}
+		
+		// Handle pagination clicks
+		$(document).on('click', '.csd-page-number', function(e) {
+			e.preventDefault();
+			
+			var page = parseInt($(this).data('page'));
+			var formData = $('#csd-query-results').data('form-data');
+			
+			if (formData) {
+				runQuery(formData, page, resultsPerPage);
+			}
+		});
+		
+		// Handle per-page changes
+		$(document).on('change', '#csd-per-page', function(e) {
+			var perPage = parseInt($(this).val());
+			var formData = $('#csd-query-results').data('form-data');
+			
+			if (formData) {
+				// Reset to first page when changing results per page
+				runQuery(formData, 1, perPage);
+			}
 		});
 		
 		// Update your edit SQL button handler
