@@ -765,8 +765,192 @@
 						}
 						
 						// Load conditions
-						// This would need the full code for loading conditions
-						// ...
+						if (queryData.conditions && Array.isArray(queryData.conditions)) {
+							// Get container
+							var $conditionsContainer = $('#csd-conditions-container');
+							
+							// Clear container
+							$conditionsContainer.empty();
+							
+							// Process each condition group from the saved data
+							$.each(queryData.conditions, function(groupIndex, group) {
+								// Create a new condition group from scratch
+								var groupHtml = '<div class="csd-condition-group" data-group="' + groupIndex + '">' +
+									'<div class="csd-condition-group-header">' +
+									'<h4>Condition Group ' + (groupIndex + 1) + '</h4>' +
+									'<button type="button" class="csd-remove-group button" style="' + 
+									(queryData.conditions.length > 1 ? '' : 'display:none') + 
+									'">Remove Group</button>' +
+									'</div>' +
+									'<div class="csd-conditions"></div>' +
+									'<div class="csd-condition-actions">' +
+									'<button type="button" class="csd-add-condition button">Add Condition</button>' +
+									'</div>' +
+									'</div>';
+								
+								var $group = $(groupHtml);
+								$conditionsContainer.append($group);
+								
+								// Add each condition to this group
+								$.each(group, function(condIndex, cond) {
+									// Build condition HTML
+									var condHtml = '<div class="csd-condition" data-index="' + condIndex + '">' +
+										'<select class="csd-condition-field" name="conditions[' + groupIndex + '][' + condIndex + '][field]">' +
+										$('.csd-condition-field:first').html() + // Copy options from any existing field select
+										'</select>' +
+										
+										'<select class="csd-condition-operator" name="conditions[' + groupIndex + '][' + condIndex + '][operator]">' +
+										$('.csd-condition-operator:first').html() + // Copy options from any existing operator select
+										'</select>' +
+										
+										'<div class="csd-condition-value-container">' +
+										'<input type="text" class="csd-condition-value" name="conditions[' + groupIndex + '][' + condIndex + '][value]" placeholder="Enter value">' +
+										
+										'<div class="csd-between-values" style="' + 
+										((cond.operator === 'BETWEEN' || cond.operator === 'NOT BETWEEN') ? '' : 'display:none;') + 
+										'">' +
+										'<input type="text" class="csd-condition-value-2" name="conditions[' + groupIndex + '][' + condIndex + '][value2]" placeholder="End value">' +
+										'</div>' +
+										
+										'<button type="button" class="csd-get-values button" title="Get possible values">' +
+										'<span class="dashicons dashicons-arrow-down"></span>' +
+										'</button>' +
+										'</div>' +
+										
+										'<select class="csd-condition-relation" name="conditions[' + groupIndex + '][' + condIndex + '][relation]" style="' + 
+										(condIndex === group.length - 1 ? 'display:none;' : '') + 
+										'">' +
+										'<option value="AND">AND</option>' +
+										'<option value="OR">OR</option>' +
+										'</select>' +
+										
+										'<button type="button" class="csd-remove-condition button" style="' + 
+										(condIndex > 0 || group.length > 1 ? '' : 'display:none;') + 
+										'">' +
+										'<span class="dashicons dashicons-no"></span>' +
+										'</button>' +
+										'</div>';
+									
+									var $condition = $(condHtml);
+									$group.find('.csd-conditions').append($condition);
+									
+									// Set values for select elements (after they're added to the DOM)
+									$condition.find('.csd-condition-field').val(cond.field);
+									$condition.find('.csd-condition-operator').val(cond.operator);
+									$condition.find('.csd-condition-value').val(cond.value);
+									
+									if (cond.value2) {
+										$condition.find('.csd-condition-value-2').val(cond.value2);
+									}
+									
+									if (cond.relation) {
+										$condition.find('.csd-condition-relation').val(cond.relation);
+									}
+								});
+							});
+							
+							// Reattach event handlers to all new elements
+							$('.csd-add-condition').off('click').on('click', function() {
+								var group = $(this).closest('.csd-condition-group');
+								var groupIndex = group.data('group');
+								var conditions = group.find('.csd-conditions');
+								var newIndex = conditions.find('.csd-condition').length;
+								
+								// Clone the first condition as a template
+								var newCondition = conditions.find('.csd-condition:first').clone();
+								
+								// Update names and clear values
+								newCondition.attr('data-index', newIndex);
+								newCondition.find('.csd-condition-field').attr('name', 'conditions[' + groupIndex + '][' + newIndex + '][field]').val('');
+								newCondition.find('.csd-condition-operator').attr('name', 'conditions[' + groupIndex + '][' + newIndex + '][operator]').val('');
+								newCondition.find('.csd-condition-value').attr('name', 'conditions[' + groupIndex + '][' + newIndex + '][value]').val('');
+								newCondition.find('.csd-condition-value-2').attr('name', 'conditions[' + groupIndex + '][' + newIndex + '][value2]').val('');
+								newCondition.find('.csd-condition-relation').attr('name', 'conditions[' + groupIndex + '][' + newIndex + '][relation]');
+								
+								// Show remove button
+								newCondition.find('.csd-remove-condition').show();
+								
+								// Hide BETWEEN second value by default
+								newCondition.find('.csd-between-values').hide();
+								
+								// Add the new condition
+								conditions.append(newCondition);
+								
+								// Update the last condition's relation visibility (hide on the last one)
+								updateRelationVisibility(group);
+							});
+							
+							$('.csd-remove-condition').off('click').on('click', function() {
+								var condition = $(this).closest('.csd-condition');
+								var group = condition.closest('.csd-condition-group');
+								
+								// Only remove if there's more than one condition
+								if (group.find('.csd-condition').length > 1) {
+									condition.remove();
+									
+									// Update all remaining conditions in this group
+									updateConditionIndices(group);
+									
+									// Update relation visibility
+									updateRelationVisibility(group);
+								}
+							});
+							
+							$('.csd-remove-group').off('click').on('click', function() {
+								var group = $(this).closest('.csd-condition-group');
+								var container = $('#csd-conditions-container');
+								
+								// Only remove if there's more than one group
+								if (container.find('.csd-condition-group').length > 1) {
+									group.remove();
+									
+									// Update all remaining groups
+									updateGroupIndices();
+								}
+							});
+							
+							$('.csd-condition-operator').off('change').on('change', function() {
+								var operator = $(this).val();
+								var valueContainer = $(this).closest('.csd-condition').find('.csd-condition-value-container');
+								var valueInput = valueContainer.find('.csd-condition-value');
+								var betweenValues = valueContainer.find('.csd-between-values');
+								
+								// Reset
+								valueInput.show();
+								betweenValues.hide();
+								
+								// Handle different operator types
+								if (operator === "= ''" || operator === "!= ''") {
+									valueInput.hide();
+								} else if (operator === 'BETWEEN' || operator === 'NOT BETWEEN') {
+									betweenValues.show();
+								} else if (operator === 'IN' || operator === 'NOT IN') {
+									valueInput.attr('placeholder', 'Enter values separated by commas');
+								} else {
+									valueInput.attr('placeholder', 'Enter value');
+								}
+							});
+						}
+						
+						// Make sure to properly handle field selections *before* submitting the form
+						if (queryData.fields && queryData.fields.length) {
+							// First uncheck all fields
+							$('input[name="fields[]"]').prop('checked', false);
+							
+							// Then check the ones in the query data
+							$.each(queryData.fields, function(i, field) {
+								$('input[name="fields[]"][value="' + field + '"]').prop('checked', true);
+							});
+						}
+						
+						// Fix the order-dir selector
+						if (queryData.order_dir) {
+							$('#csd-order-dir').val(queryData.order_dir);
+						}
+						
+						// DON'T automatically submit the form
+						// This gives the user a chance to review before running
+						// $('#csd-query-builder-form').submit();
 						
 						// Load options
 						if (queryData.limit) {
