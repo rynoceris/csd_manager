@@ -1958,7 +1958,7 @@ class CSD_Query_Builder {
 	}
 	
 	/**
-	 * AJAX handler for exporting query results
+	 * AJAX handler for exporting query results to CSV
 	 */
 	public function ajax_export_query_results() {
 		// Check nonce
@@ -1982,45 +1982,72 @@ class CSD_Query_Builder {
 		}
 		
 		try {
-			// Run the query
-			$results = $this->execute_query($sql);
+			// Debugging - log the incoming SQL
+			error_log('Original SQL for export: ' . $sql);
+			
+			// Get database connection
+			$wpdb = csd_db_connection();
+			
+			// Fix the SQL syntax issues with quoted LIKE values
+			$sql = str_replace("\'", "'", $sql);
+			
+			// For debugging - log the fixed SQL
+			error_log('Fixed SQL for export: ' . $sql);
+			
+			// Execute the query directly without trying to break it down
+			$results = $wpdb->get_results($sql, ARRAY_A);
+			
+			// Check for database errors
+			if ($wpdb->last_error) {
+				error_log('SQL Error: ' . $wpdb->last_error);
+				wp_die('Database error: ' . $wpdb->last_error);
+			}
+			
+			// Debug info about results
+			error_log('Results count: ' . (is_array($results) ? count($results) : 'not an array'));
+			if (is_array($results) && !empty($results)) {
+				error_log('First row keys: ' . print_r(array_keys($results[0]), true));
+			}
 			
 			if (empty($results)) {
 				wp_die(__('No results to export.', 'csd-manager'));
 			}
 			
-			// Sanitize @placeholder emails
-			foreach ($results as &$row) {
-				foreach ($row as $key => $value) {
-					// Check for email columns and @placeholder values
-					if (strpos($key, 'email') !== false && strpos($value, '@placeholder') !== false) {
-						$row[$key] = ''; // Replace with empty string
-					}
-				}
-			}
+			// Don't use output buffering here, it might be interfering
 			
-			// Set filename
-			$filename = 'csd-query-export-' . date('Y-m-d') . '.csv';
+			// Set filename with timestamp to prevent caching
+			$filename = 'csd-query-export-' . date('Y-m-d-H-i-s') . '.csv';
 			
-			// Set headers for CSV download
-			header('Content-Type: text/csv; charset=utf-8');
-			header('Content-Disposition: attachment; filename=' . $filename);
+			// Set headers for CSV download - be very explicit
+			header('Content-Type: text/csv');
+			header('Content-Disposition: attachment; filename="' . $filename . '"');
+			header('Pragma: no-cache');
+			header('Expires: 0');
+			header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+			header('Cache-Control: private', false);
 			
-			// Create output handle
+			// Create output stream
 			$output = fopen('php://output', 'w');
 			
-			// Add headers
+			// Write UTF-8 BOM to help with Excel compatibility
+			fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+			
+			// Write headers
 			fputcsv($output, array_keys($results[0]));
 			
-			// Add data
+			// Write data rows
 			foreach ($results as $row) {
 				fputcsv($output, $row);
 			}
 			
+			// Close the output
 			fclose($output);
-			exit;
+			
+			// End execution
+			exit();
 		} catch (Exception $e) {
-			wp_die($e->getMessage());
+			error_log('CSV Export Exception: ' . $e->getMessage());
+			wp_die('Export error: ' . $e->getMessage());
 		}
 	}
 	
