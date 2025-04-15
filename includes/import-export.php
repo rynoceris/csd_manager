@@ -26,6 +26,49 @@ class CSD_Import_Export {
 	 * Render import/export page
 	 */
 	public function render_page() {
+		// Add these styles
+		echo '<style>
+			.csd-preview-table-wrapper {
+				max-width: 100%;
+				overflow-x: auto;
+				margin-bottom: 20px;
+				border: 1px solid #ddd;
+				padding: 10px;
+			}
+			.csd-preview-table-wrapper table {
+				table-layout: auto;
+				border-collapse: collapse;
+				width: auto;
+			}
+			.csd-preview-table-wrapper th {
+				min-width: 150px;
+				max-width: 300px;
+				padding: 10px;
+				background-color: #f1f1f1;
+				font-weight: bold;
+				text-align: left;
+				white-space: nowrap;
+				border-bottom: 2px solid #ddd;
+			}
+			.csd-preview-table-wrapper td {
+				min-width: 150px;
+				max-width: 300px;
+				padding: 8px;
+				border-bottom: 1px solid #eee;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+			.csd-preview-table-wrapper tr:nth-child(even) {
+				background-color: #f9f9f9;
+			}
+			.csd-preview-table-wrapper tr:hover {
+				background-color: #f5f5f5;
+			}
+			.csd-import-section, .csd-export-section {
+				max-width: 100%;
+			}
+		</style>';
+		
 		// Ensure scripts and nonce are properly loaded
 		wp_enqueue_script('jquery');
 		
@@ -200,6 +243,85 @@ class CSD_Import_Export {
 		
 		<script type="text/javascript">
 			jQuery(document).ready(function($) {
+				
+				// Add this function inside the document ready function
+				// Replace your current makeTableColumnsResizable function with this updated version
+				function makeTableColumnsResizable() {
+					console.log('Making columns resizable for both preview and mapping tables');
+					
+					// Target both preview tables
+					$('#csd-preview-content table, #csd-mapping-preview-content table').each(function() {
+						const $table = $(this);
+						
+						// Skip if already processed
+						if ($table.hasClass('resizable-processed')) {
+							return;
+						}
+						
+						// Mark as processed to avoid duplicates
+						$table.addClass('resizable-processed');
+						
+						// Add resizers to all headers in this table
+						$table.find('th').each(function() {
+							const $col = $(this);
+							// Create resizer element
+							const $resizer = $('<div class="column-resizer"></div>');
+							$col.append($resizer);
+							
+							// Track the mouse position and width
+							let x = 0;
+							let w = 0;
+							
+							$resizer.on('mousedown', function(e) {
+								// Prevent text selection during resize
+								e.preventDefault();
+								
+								// Get initial position and column width
+								x = e.clientX;
+								w = $col.width();
+								
+								// Add resizing class
+								$resizer.addClass('resizing');
+								$col.addClass('resizing');
+								
+								// Add mouse move and mouse up handlers to document
+								$(document).on('mousemove.columnResize', function(ev) {
+									// Calculate width difference
+									const dx = ev.clientX - x;
+									// Set new width (minimum 50px)
+									$col.width(Math.max(50, w + dx));
+								});
+								
+								$(document).on('mouseup.columnResize', function() {
+									// Remove resizing classes
+									$resizer.removeClass('resizing');
+									$col.removeClass('resizing');
+									
+									// Remove the document event handlers
+									$(document).off('mousemove.columnResize mouseup.columnResize');
+								});
+							});
+						});
+					});
+				}
+				
+				// Function to add a Reset All Tables button
+				function addResetAllTablesButton() {
+					// Only add if not already there
+					if ($('#reset-all-tables').length === 0) {
+						$('#csd-import-preview').before(`
+							<div style="margin: 15px 0;">
+								<button id="reset-all-tables" class="button button-primary">Reset All Table Columns</button>
+							</div>
+						`);
+						
+						// Reset all tables on click
+						$('#reset-all-tables').on('click', function() {
+							$('#csd-preview-content th, #csd-mapping-preview-content th').css('width', '');
+						});
+					}
+				}
+				
 				// Check if csd_ajax is defined and create a fallback if not
 				if (typeof csd_ajax === 'undefined') {
 					window.csd_ajax = {
@@ -293,6 +415,9 @@ class CSD_Import_Export {
 								// Display preview data
 								$('#csd-preview-content').html(response.data.preview_html);
 								
+								// Add the Reset All Tables button
+								addResetAllTablesButton();
+								
 								// Set up column mapping - UPDATED TO PASS THE EXPECTED COLUMNS
 								setupColumnMapping(response.data.columns, response.data.import_type, response.data.expected_columns);
 								
@@ -359,6 +484,8 @@ class CSD_Import_Export {
 								
 								// Display results
 								$('#csd-results-content').html(response.data.results_html);
+								
+								setTimeout(makeTableColumnsResizable, 500);
 							} else {
 								// Show error message
 								showStatus('Error: ' + (response.data ? response.data.message : 'Unknown error'), true);
@@ -389,6 +516,36 @@ class CSD_Import_Export {
 					$('.csd-import-form-wrapper').show();
 					$('#csd-import-form')[0].reset();
 					$('#import-status').hide();
+				});
+				
+				// Add this after your import preview is shown
+				$('#csd-import-preview').on('DOMNodeInserted', function() {
+					// Only add the control once
+					if ($('#resize-columns-toggle').length === 0) {
+						$('#csd-preview-content').before(`
+							<div style="margin-bottom: 10px;">
+								<button id="resize-columns-toggle" class="button">Enable Column Resizing</button>
+								<button id="reset-column-widths" class="button">Reset Column Widths</button>
+							</div>
+						`);
+						
+						// Toggle resizing on/off
+						$('#resize-columns-toggle').on('click', function() {
+							if ($(this).hasClass('active')) {
+								$(this).removeClass('active').text('Enable Column Resizing');
+								// Remove all resizers
+								$('.column-resizer').remove();
+							} else {
+								$(this).addClass('active').text('Disable Column Resizing');
+								makeTableColumnsResizable();
+							}
+						});
+						
+						// Reset column widths
+						$('#reset-column-widths').on('click', function() {
+							$('#csd-preview-content th').css('width', '');
+						});
+					}
 				});
 				
 				// Export form submission
@@ -457,6 +614,12 @@ class CSD_Import_Export {
 					$previewPanel.append('<p>This shows how your CSV data will be mapped to the database fields.</p>');
 					$previewPanel.append('<div id="csd-mapping-preview-content" class="csd-mapping-preview-content"></div>');
 					
+					// Ensure the mapping preview container has scrolling enabled - STEP 5
+					$('.csd-mapping-preview').css({
+						'max-width': '100%',
+						'overflow-x': 'auto'
+					});
+					
 					// Track the mapped columns to prevent duplicates
 					var mappedColumns = {};
 					
@@ -510,14 +673,21 @@ class CSD_Import_Export {
 						$.extend(availableFields, schoolFields, staffFields);
 					}
 					
-					// Function to update the mapping preview
+					// Function to update the mapping preview - UPDATED FOR STEP 4
 					function updateMappingPreview() {
 						var $previewContent = $('#csd-mapping-preview-content');
 						$previewContent.empty();
 						
-						var table = $('<table class="wp-list-table widefat fixed striped"></table>');
+						// Create table with appropriate classes and structure
+						var table = $('<table class="wp-list-table widefat fixed striped mapping-preview-table"></table>');
 						var headerRow = $('<tr></tr>');
 						var valueRow = $('<tr></tr>');
+						
+						// Create a proper table header
+						var thead = $('<thead></thead>').append(headerRow);
+						var tbody = $('<tbody></tbody>').append(valueRow);
+						
+						table.append(thead).append(tbody);
 						
 						// Add headers and sample values
 						$('.csd-column-map').each(function() {
@@ -545,9 +715,21 @@ class CSD_Import_Export {
 							}
 						});
 						
-						table.append(headerRow);
-						table.append(valueRow);
-						$previewContent.append(table);
+						// Only append if we have data
+						if (headerRow.children().length > 0) {
+							$previewContent.append(table);
+							
+							// Apply styling to ensure proper display
+							$previewContent.css({
+								'overflow-x': 'auto',
+								'max-width': '100%',
+								'border': '1px solid #ddd',
+								'margin-top': '15px',
+								'padding': '10px'
+							});
+						} else {
+							$previewContent.html('<p class="description">No column mappings selected yet. Please map CSV columns to database fields above.</p>');
+						}
 					}
 					
 					// Create mapping UI for each expected column from the import type
@@ -746,6 +928,34 @@ class CSD_Import_Export {
 							}
 						});
 					});
+					
+					// Add a toggle button for the mapping preview
+					$('#csd-mapping-preview-content').before(`
+						<div style="margin: 10px 0;">
+							<button id="mapping-resize-toggle" class="button">Enable Column Resizing</button>
+							<button id="mapping-reset-widths" class="button">Reset Column Widths</button>
+						</div>
+					`);
+					
+					// Toggle resizing for mapping preview
+					$('#mapping-resize-toggle').on('click', function() {
+						if ($(this).hasClass('active')) {
+							$(this).removeClass('active').text('Enable Column Resizing');
+							// Remove resizers from mapping table
+							$('#csd-mapping-preview-content .column-resizer').remove();
+						} else {
+							$(this).addClass('active').text('Disable Column Resizing');
+							makeTableColumnsResizable();
+						}
+					});
+					
+					// Reset mapping column widths
+					$('#mapping-reset-widths').on('click', function() {
+						$('#csd-mapping-preview-content th').css('width', '');
+					});
+					
+					// Call makeTableColumnsResizable after a short delay to ensure DOM is ready
+					setTimeout(makeTableColumnsResizable, 500);
 				}
 			});
 		</script>
@@ -756,6 +966,80 @@ class CSD_Import_Export {
 	 * AJAX handler for previewing import with Mac CR line ending support
 	 */
 	public function ajax_preview_import() {
+		
+		ob_start();
+		?>
+		<style>
+			/* CSV Preview Table Styles */
+			/* Both preview tables styling */
+			.csd-preview-table-wrapper table,
+			.csd-mapping-preview-content table {
+				width: 100%;
+				border-collapse: separate;
+				border-spacing: 0;
+			}
+			
+			.csd-preview-table-wrapper thead,
+			.csd-mapping-preview-content thead {
+				background: #f8f8f8;
+				position: sticky;
+				top: 0;
+				z-index: 1;
+			}
+			
+			.csd-preview-table-wrapper th,
+			.csd-mapping-preview-content th {
+				min-width: 150px;
+				padding: 12px 15px;
+				text-align: left;
+				font-weight: 600;
+				color: #23282d;
+				border-bottom: 2px solid #e2e4e7;
+				position: relative;
+			}
+			
+			.csd-preview-table-wrapper td,
+			.csd-mapping-preview-content td {
+				min-width: 150px;
+				padding: 10px 15px;
+				border-bottom: 1px solid #f1f1f1;
+				vertical-align: top;
+			}
+			
+			/* Mapping Preview specific styles */
+			.csd-mapping-preview-content {
+				margin-top: 15px;
+				overflow-x: auto;
+				max-height: 400px; /* Add a max height to prevent too tall tables */
+				border: 1px solid #ddd;
+				border-radius: 4px;
+				background: #fff;
+			}
+			
+			/* Column resizing for both tables */
+			.csd-preview-table-wrapper th, 
+			.csd-mapping-preview-content th {
+				position: relative;
+			}
+			
+			.column-resizer {
+				position: absolute;
+				top: 0;
+				right: 0;
+				bottom: 0;
+				width: 5px;
+				cursor: col-resize;
+				z-index: 10;
+			}
+			
+			.column-resizer:hover, 
+			.column-resizer.resizing {
+				background-color: #0085ba;
+			}
+		</style>
+		<?php
+		$custom_styles = ob_get_clean();
+		
 		// Explicitly state content type for response
 		header('Content-Type: application/json');
 		
@@ -920,6 +1204,9 @@ class CSD_Import_Export {
 			$preview_html .= '</div>';
 			
 			$preview_html .= '</div>';
+			
+			// Then append these styles to your response
+			$preview_html = $custom_styles . $preview_html;
 			
 			// Send success response
 			wp_send_json_success(array(

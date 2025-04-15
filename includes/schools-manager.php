@@ -113,6 +113,7 @@ class CSD_Schools_Manager {
 				<table class="wp-list-table widefat fixed striped csd-schools-table">
 					<thead>
 						<tr>
+							<th><?php _e('School Logo', 'csd-manager'); ?></th>
 							<th class="sortable" data-sort="school_name"><?php _e('School Name', 'csd-manager'); ?></th>
 							<th class="sortable" data-sort="city"><?php _e('City', 'csd-manager'); ?></th>
 							<th class="sortable" data-sort="state"><?php _e('State', 'csd-manager'); ?></th>
@@ -307,6 +308,7 @@ class CSD_Schools_Manager {
 										console.log('Adding school:', school.school_name);
 										
 										var row = '<tr>' +
+											'<td>' + ((school.school_logo) ? '<a href="?page=csd-schools&action=edit&id=' + school.id + '"><img style="max-height:25px;" src="' + school.school_logo + '" alt="' + school.school_name + '"/></a>' : '') + '</td>' +
 											'<td><a href="?page=csd-schools&action=edit&id=' + school.id + '">' + school.school_name + '</a></td>' +
 											'<td>' + (school.city || '') + '</td>' +
 											'<td>' + (school.state || '') + '</td>' +
@@ -568,6 +570,15 @@ class CSD_Schools_Manager {
 								<input type="text" id="school_colors" name="school_colors" value="<?php echo $is_edit ? esc_attr($school->school_colors) : ''; ?>" class="regular-text">
 							</td>
 						</tr>
+						
+						<tr>
+							<th scope="row">
+								<label for="school_logo"><?php _e('School Logo', 'csd-manager'); ?></label>
+							</th>
+							<td>
+								<input type="text" id="school_logo" name="school_logo" value="<?php echo $is_edit ? esc_attr($school->school_logo) : ''; ?>" class="regular-text">
+							</td>
+						</tr>
 					</table>
 				</div>
 				
@@ -634,6 +645,13 @@ class CSD_Schools_Manager {
 		
 		<script type="text/javascript">
 			jQuery(document).ready(function($) {
+				if (typeof csd_ajax === 'undefined') {
+					window.csd_ajax = {
+						ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
+						nonce: '<?php echo wp_create_nonce('csd-ajax-nonce'); ?>'
+					};
+				}
+				
 				$('#csd-school-form').on('submit', function(e) {
 					e.preventDefault();
 					
@@ -708,6 +726,12 @@ class CSD_Schools_Manager {
 			<hr class="wp-header-end">
 			
 			<div class="csd-school-details">
+				<?php if ($school->school_logo) : ?>
+				<div class="csd-detail-section">
+					<h2><?php _e('School Logo', 'csd-manager'); ?></h2>
+					<img src="<?php echo esc_html($school->school_logo); ?>" alt="<?php echo esc_html($school->school_name); ?>" style="max-width:200px;" />
+				</div>
+				<?php endif; ?>
 				<div class="csd-detail-section">
 					<h2><?php _e('School Information', 'csd-manager'); ?></h2>
 					
@@ -1010,6 +1034,9 @@ class CSD_Schools_Manager {
 		// Parse form data
 		parse_str($_POST['form_data'], $form_data);
 		
+		// ADD THIS LINE - Remove extra slashes from the form data
+		$form_data = stripslashes_deep($form_data);
+		
 		// Verify form nonce
 		if (!isset($form_data['csd_school_nonce']) || !wp_verify_nonce($form_data['csd_school_nonce'], 'csd_save_school')) {
 			wp_send_json_error(array('message' => __('Form security check failed.', 'csd-manager')));
@@ -1043,6 +1070,7 @@ class CSD_Schools_Manager {
 			'school_enrollment' => intval($form_data['school_enrollment']),
 			'mascot' => sanitize_text_field($form_data['mascot']),
 			'school_colors' => sanitize_text_field($form_data['school_colors']),
+			'school_logo' => sanitize_text_field($form_data['school_logo']),
 			'school_website' => esc_url_raw($form_data['school_website']),
 			'athletics_website' => esc_url_raw($form_data['athletics_website']),
 			'athletics_phone' => sanitize_text_field($form_data['athletics_phone']),

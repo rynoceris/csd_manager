@@ -166,7 +166,7 @@
 	display: block;
 }
 .csd-import-section, .csd-export-section {
-	max-width: 800px;
+	max-width: 100%;
 }
 .csd-import-options, .csd-export-options {
 	margin: 15px 0;
@@ -233,4 +233,102 @@
 	font-family: monospace;
 	background: #f9f9f9;
 	color: #444;
+}
+.csd-mapping-field {
+	margin-bottom: 15px;
+	padding-bottom: 15px;
+	border-bottom: 1px solid #f0f0f0;
+}
+
+.csd-mapping-field label {
+	display: block;
+	font-weight: bold;
+	margin-bottom: 5px;
+}
+
+.csd-mapping-field select {
+	width: 100%;
+	max-width: 500px;
+	padding: 6px;
+}
+
+.csd-mapping-field.error select {
+	border-color: #dc3545;
+	box-shadow: 0 0 0 1px #dc3545;
+}
+
+.csd-mapping-preview {
+	margin-top: 30px;
+	padding: 15px;
+	background-color: #f8f8f8;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+}
+
+.csd-mapping-preview h4 {
+	margin-top: 0;
+	margin-bottom: 10px;
+}
+
+.csd-mapping-preview-content {
+	margin-top: 15px;
+}
+
+.csd-mapping-preview-content table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.csd-mapping-preview-content th {
+	background-color: #f0f0f0;
+	padding: 8px;
+	text-align: left;
+	font-weight: bold;
+	border-bottom: 2px solid #ddd;
+}
+
+.csd-mapping-preview-content td {
+	padding: 8px;
+	border-bottom: 1px solid #ddd;
+}
+
+/* Import validation message */
+.csd-mapping-validation-message {
+	margin: 20px 0;
+	padding: 15px;
+	background-color: #f8d7da;
+	border: 1px solid #f5c6cb;
+	color: #721c24;
+	border-radius: 4px;
+	display: none;
+}
+
+.csd-mapping-legend {
+	margin-top: 20px;
+	padding: 10px;
+	background-color: #e9ecef;
+	border-radius: 4px;
+}
+
+.csd-mapping-legend span.required {
+	color: red;
+	font-weight: bold;
+}
+
+/* Improve the preview table */
+.csd-preview-table-wrapper {
+	margin-bottom: 30px;
+	overflow-x: auto;
+}
+
+.csd-preview-table-wrapper table {
+	min-width: 100%;
+}
+
+/* Make the columns more visible */
+.csd-column-mapping {
+	background-color: #fff;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	padding: 20px;
 }

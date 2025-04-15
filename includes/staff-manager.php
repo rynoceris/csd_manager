@@ -383,6 +383,12 @@ class CSD_Staff_Manager {
 		$staff = null;
 		$staff_school_id = 0;
 		
+		// Add these lines to enqueue Select2
+		wp_enqueue_style('select2', 'https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css');
+		wp_enqueue_script('select2', 'https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js', array('jquery'));
+		
+		$this->enqueue_page_scripts();
+		
 		if ($is_edit) {
 			$wpdb = csd_db_connection();
 			$staff = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . csd_table('staff') . " WHERE id = %d", $staff_id));
@@ -539,30 +545,79 @@ class CSD_Staff_Manager {
 		
 		<script type="text/javascript">
 			jQuery(document).ready(function($) {
-				// Initialize school search dropdown
-				$('#school_id').select2({
-					placeholder: '<?php _e('Select a school', 'csd-manager'); ?>',
-					allowClear: true,
-					minimumInputLength: 2,
-					ajax: {
-						url: csd_ajax.ajax_url,
-						dataType: 'json',
-						delay: 250,
-						data: function(params) {
-							return {
-								action: 'csd_get_schools_dropdown',
-								search: params.term,
-								nonce: csd_ajax.nonce
-							};
+				// Add fallback for csd_ajax
+				if (typeof csd_ajax === 'undefined') {
+					window.csd_ajax = {
+						ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
+						nonce: '<?php echo wp_create_nonce('csd-ajax-nonce'); ?>'
+					};
+				}
+				
+				// Add a safety check for Select2
+				// Initialize school search dropdown with proper error handling
+				if (typeof $.fn.select2 !== 'undefined') {
+					$('#school_id').select2({
+						placeholder: '<?php _e('Select a school', 'csd-manager'); ?>',
+						allowClear: true,
+						minimumInputLength: 2,
+						ajax: {
+							url: csd_ajax.ajax_url,
+							type: 'POST', // Force POST method
+							dataType: 'json',
+							delay: 250,
+							data: function(params) {
+								return {
+									action: 'csd_get_schools_dropdown',
+									search: params.term,
+									nonce: csd_ajax.nonce
+								};
+							},
+							processResults: function(response) {
+								// Check if the response is valid
+								if (response && response.success && response.data) {
+									return response.data;
+								} else {
+									// Handle error case properly
+									console.error('Error in schools dropdown response:', response);
+									return { results: [] };
+								}
+							},
+							cache: true,
+							error: function(xhr, status, error) {
+								console.error('AJAX error in Select2:', status, error);
+							}
 						},
-						processResults: function(data) {
-							return {
-								results: data.data
-							};
+						// Add additional configurations to improve reliability
+						templateResult: function(data) {
+							if (data.loading) {
+								return data.text;
+							}
+							return $('<span>' + data.text + '</span>');
 						},
-						cache: true
-					}
-				});
+						language: {
+							errorLoading: function() {
+								return 'The results could not be loaded.';
+							},
+							inputTooShort: function(args) {
+								var remainingChars = args.minimum - args.input.length;
+								return 'Please enter ' + remainingChars + ' or more characters to search.';
+							},
+							noResults: function() {
+								return 'No results found.';
+							},
+							searching: function() {
+								return 'Searching...';
+							}
+						}
+					}).on('select2:error', function(e) {
+						console.error('Select2 error:', e);
+					});
+				} else {
+					// Fallback for when Select2 is not available
+					console.log('Select2 not loaded - using standard select');
+					// Make the standard dropdown still work
+					$('#school_id').css('width', '100%');
+				}
 				
 				// Form submission
 				$('#csd-staff-form').on('submit', function(e) {
@@ -594,7 +649,8 @@ class CSD_Staff_Manager {
 								$('.csd-form-submit button').prop('disabled', false).text('<?php echo $is_edit ? __('Update Staff Member', 'csd-manager') : __('Add Staff Member', 'csd-manager'); ?>');
 							}
 						},
-						error: function() {
+						error: function(xhr, status, error) {
+							console.error('AJAX error:', status, error);
 							alert('<?php _e('An error occurred. Please try again.', 'csd-manager'); ?>');
 							$('.csd-form-submit button').prop('disabled', false).text('<?php echo $is_edit ? __('Update Staff Member', 'csd-manager') : __('Add Staff Member', 'csd-manager'); ?>');
 						}
@@ -757,12 +813,8 @@ class CSD_Staff_Manager {
 	 * AJAX handler for getting staff
 	 */
 	public function ajax_get_staff() {
-		// Add these debugging lines
-		error_log('AJAX get_staff called: ' . print_r($_POST, true));
-		
-		// If the nonce check fails, provide more details
+		// Check nonce
 		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'csd-ajax-nonce')) {
-			error_log('Nonce check failed: ' . (isset($_POST['nonce']) ? $_POST['nonce'] : 'not set'));
 			wp_send_json_error(array('message' => __('Security check failed.', 'csd-manager')));
 			return;
 		}
@@ -874,19 +926,25 @@ class CSD_Staff_Manager {
 		// Check nonce
 		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'csd-ajax-nonce')) {
 			wp_send_json_error(array('message' => __('Security check failed.', 'csd-manager')));
+			return;
 		}
 		
 		// Parse form data
 		parse_str($_POST['form_data'], $form_data);
 		
+		// Remove extra slashes from the form data
+		$form_data = stripslashes_deep($form_data);
+		
 		// Verify form nonce
 		if (!isset($form_data['csd_staff_nonce']) || !wp_verify_nonce($form_data['csd_staff_nonce'], 'csd_save_staff')) {
 			wp_send_json_error(array('message' => __('Form security check failed.', 'csd-manager')));
+			return;
 		}
 		
 		// Validate required fields
 		if (empty($form_data['full_name'])) {
 			wp_send_json_error(array('message' => __('Full name is required.', 'csd-manager')));
+			return;
 		}
 		
 		$wpdb = csd_db_connection();
@@ -987,12 +1045,14 @@ class CSD_Staff_Manager {
 		// Check nonce
 		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'csd-ajax-nonce')) {
 			wp_send_json_error(array('message' => __('Security check failed.', 'csd-manager')));
+			return;
 		}
 		
 		$staff_id = isset($_POST['staff_id']) ? intval($_POST['staff_id']) : 0;
 		
 		if ($staff_id <= 0) {
 			wp_send_json_error(array('message' => __('Invalid staff ID.', 'csd-manager')));
+			return;
 		}
 		
 		$wpdb = csd_db_connection();
@@ -1037,12 +1097,22 @@ class CSD_Staff_Manager {
 	 * AJAX handler for getting schools dropdown
 	 */
 	public function ajax_get_schools_dropdown() {
-		// Check nonce
-		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'csd-ajax-nonce')) {
-			wp_send_json_error(array('message' => __('Security check failed.', 'csd-manager')));
+		// Check nonce, handling both GET and POST requests
+		$nonce = '';
+		if (isset($_REQUEST['nonce'])) {
+			$nonce = $_REQUEST['nonce'];
 		}
 		
-		$search = isset($_POST['search']) ? sanitize_text_field($_POST['search']) : '';
+		if (!wp_verify_nonce($nonce, 'csd-ajax-nonce')) {
+			wp_send_json_error(array('message' => __('Security check failed.', 'csd-manager')));
+			return;
+		}
+		
+		// Get search parameter from either GET or POST
+		$search = '';
+		if (isset($_REQUEST['search'])) {
+			$search = sanitize_text_field($_REQUEST['search']);
+		}
 		
 		$wpdb = csd_db_connection();
 		
@@ -1056,8 +1126,18 @@ class CSD_Staff_Manager {
 		
 		$query .= " ORDER BY school_name ASC LIMIT 20";
 		
-		$schools = $wpdb->get_results($wpdb->prepare($query, $query_args));
+		if (!empty($query_args)) {
+			$schools = $wpdb->get_results($wpdb->prepare($query, $query_args));
+		} else {
+			$schools = $wpdb->get_results($query);
+		}
 		
-		wp_send_json_success($schools);
+		// Ensure we have a valid array for Select2
+		$schools = is_array($schools) ? $schools : array();
+		
+		// Format response specifically for Select2
+		wp_send_json_success(array(
+			'results' => $schools
+		));
 	}
 }
